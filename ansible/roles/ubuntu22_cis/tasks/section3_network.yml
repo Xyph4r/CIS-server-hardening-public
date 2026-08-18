@@ -81,6 +81,25 @@
   when: ubuntu22cis_configure_ufw
   tags: [cis_3.4]
 
+# --- 3.5 VPN-only management ports (Netbird scaffolding) ---
+# cis_vpn_only_tcp_ports stays empty until you actually deploy something
+# that should be VPN-only (e.g. a Wazuh dashboard) - no-op by default.
+
+- name: "3.5 | Allow VPN-only management ports (restricted to the Netbird interface)"
+  ansible.builtin.command: "ufw allow in on {{ cis_vpn_interface }} to any port {{ item }} proto tcp"
+  loop: "{{ cis_vpn_only_tcp_ports }}"
+  when: ubuntu22cis_configure_ufw and cis_vpn_only_tcp_ports | length > 0
+  changed_when: true
+  tags: [cis_3.5]
+
+- name: "3.5 | Allow Netbird UDP port publicly (optional, usually unnecessary)"
+  community.general.ufw:
+    rule: allow
+    port: "{{ cis_netbird_udp_port | string }}"
+    proto: udp
+  when: ubuntu22cis_configure_ufw and cis_netbird_expose_udp_port
+  tags: [cis_3.5]
+
 - name: "3.4 | Enable ufw"
   community.general.ufw:
     state: enabled

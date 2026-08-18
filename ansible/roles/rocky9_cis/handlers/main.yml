@@ -28,3 +28,7 @@
   changed_when: true
   async: 3600
   poll: 0
+
+- name: reload firewalld
+  ansible.builtin.command: firewall-cmd --reload
+  changed_when: true

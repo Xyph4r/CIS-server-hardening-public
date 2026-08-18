@@ -1,0 +1,156 @@
+---
+# CIS Ubuntu 26.04 - Section 5: Access, Authentication, SSH, sudo
+# NOTE: SSH changes can lock you out. Always run --check --diff first, and
+# keep an out-of-band console session open when applying for real.
+
+- name: "5.1 | Ensure openssh-server is installed"
+  ansible.builtin.apt:
+    name: openssh-server
+    state: present
+  tags: [cis_5.1]
+
+- name: "5.1 | Ensure /etc/ssh/sshd_config permissions are 0600 root:root"
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0600"
+  tags: [cis_5.1]
+
+- name: "5.1 | Harden sshd_config"
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?{{ item.key }}\\s"
+    line: "{{ item.key }} {{ item.value }}"
+    validate: "/usr/sbin/sshd -t -f %s"
+  loop:
+    - { key: "Protocol", value: "2" }
+    - { key: "Port", value: "{{ cis_ssh_port }}" }
+    - { key: "PermitRootLogin", value: "{{ cis_ssh_permit_root_login }}" }
+    - { key: "PermitEmptyPasswords", value: "no" }
+    - { key: "PasswordAuthentication", value: "{{ cis_ssh_password_auth }}" }
+    - { key: "IgnoreRhosts", value: "yes" }
+    - { key: "HostbasedAuthentication", value: "no" }
+    - { key: "X11Forwarding", value: "no" }
+    - { key: "MaxAuthTries", value: "{{ cis_ssh_max_auth_tries }}" }
+    - { key: "ClientAliveInterval", value: "{{ cis_ssh_client_alive_interval }}" }
+    - { key: "ClientAliveCountMax", value: "{{ cis_ssh_client_alive_count_max }}" }
+    - { key: "LoginGraceTime", value: "60" }
+    - { key: "Banner", value: "/etc/issue.net" }
+    - { key: "LogLevel", value: "VERBOSE" }
+    - { key: "UsePAM", value: "yes" }
+    - { key: "AllowTcpForwarding", value: "no" }
+    - { key: "MaxSessions", value: "10" }
+  notify: restart sshd
+  tags: [cis_5.1]
+
+- name: "5.1 | Restrict SSH to an allowed group (optional)"
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?AllowGroups"
+    line: "AllowGroups {{ cis_ssh_allowed_groups | join(' ') }}"
+    validate: "/usr/sbin/sshd -t -f %s"
+  when: cis_ssh_allowed_groups | length > 0
+  notify: restart sshd
+  tags: [cis_5.1]
+
+- name: "5.2 | Ensure sudo is installed"
+  ansible.builtin.apt:
+    name: sudo
+    state: present
+  tags: [cis_5.2]
+
+- name: "5.2 | Ensure sudo log file is defined"
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/cis-logfile
+    content: |
+      Defaults logfile="/var/log/sudo.log"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  tags: [cis_5.2]
+
+- name: "5.2 | Ensure sudo requires a pseudo-terminal (use_pty)"
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/cis-use-pty
+    content: "Defaults use_pty\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  tags: [cis_5.2]
+
+- name: "5.3 | Ensure PAM password quality module is installed"
+  ansible.builtin.apt:
+    name: libpam-pwquality
+    state: present
+  tags: [cis_5.3]
+
+- name: "5.3 | Configure pwquality (password complexity)"
+  ansible.builtin.lineinfile:
+    path: /etc/security/pwquality.conf
+    regexp: "^#?{{ item.key }}\\s*="
+    line: "{{ item.key }} = {{ item.value }}"
+  loop:
+    - { key: "minlen", value: "{{ cis_password_min_length }}" }
+    - { key: "dcredit", value: "-1" }
+    - { key: "ucredit", value: "-1" }
+    - { key: "ocredit", value: "-1" }
+    - { key: "lcredit", value: "-1" }
+    - { key: "retry", value: "3" }
+  tags: [cis_5.3]
+
+- name: "5.4 | Configure account lockout (faillock)"
+  ansible.builtin.blockinfile:
+    path: /etc/security/faillock.conf
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED - CIS 5.4 faillock"
+    block: |
+      deny = {{ cis_account_lockout_attempts }}
+      fail_interval = {{ cis_account_lockout_interval_sec }}
+      unlock_time = {{ cis_account_unlock_time_sec }}
+  tags: [cis_5.4]
+
+- name: "5.5 | Set password aging defaults (login.defs)"
+  ansible.builtin.lineinfile:
+    path: /etc/login.defs
+    regexp: "^{{ item.key }}\\s"
+    line: "{{ item.key }}   {{ item.value }}"
+  loop:
+    - { key: "PASS_MAX_DAYS", value: "{{ cis_password_max_days }}" }
+    - { key: "PASS_MIN_DAYS", value: "{{ cis_password_min_days }}" }
+    - { key: "PASS_WARN_AGE", value: "{{ cis_password_warn_age }}" }
+  tags: [cis_5.5]
+
+- name: "5.5 | Ensure default user umask is 027"
+  ansible.builtin.lineinfile:
+    path: /etc/login.defs
+    regexp: "^UMASK"
+    line: "UMASK           027"
+  tags: [cis_5.5]
+
+- name: "5.6 | Ensure root PATH does not contain '.' or world-writable dirs"
+  ansible.builtin.lineinfile:
+    path: /root/.bashrc
+    regexp: "^PATH="
+    line: 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [cis_5.6]
+
+- name: "5.6 | Ensure shell idle timeout (TMOUT) is configured"
+  ansible.builtin.copy:
+    dest: /etc/profile.d/cis-tmout.sh
+    content: |
+      readonly TMOUT={{ cis_shell_timeout_sec }}
+      export TMOUT
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [cis_5.6]

@@ -19,6 +19,12 @@ table inet filter {
 {% for port in debian12cis_extra_allowed_tcp_ports %}
     tcp dport {{ port }} accept
 {% endfor %}
+{% if cis_netbird_expose_udp_port %}
+    udp dport {{ cis_netbird_udp_port }} accept
+{% endif %}
+{% for port in cis_vpn_only_tcp_ports %}
+    iifname "{{ cis_vpn_interface }}" tcp dport {{ port }} accept
+{% endfor %}
   }
 
   chain forward {

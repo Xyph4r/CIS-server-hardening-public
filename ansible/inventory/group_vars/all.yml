@@ -1,6 +1,8 @@
 ---
 # Values shared across every CIS role regardless of OS.
-# Per-OS overrides live in group_vars/<group>.yml (rocky.yml/debian.yml/ubuntu.yml).
+# Per-OS overrides live in group_vars/<group>.yml, filename MUST match the
+# inventory group name exactly (rocky9.yml/debian12.yml/ubuntu22.yml/ubuntu26.yml)
+# or Ansible silently won't load it.
 
 cis_org_name: "4x-Labs"
 cis_banner_text: |
@@ -27,6 +29,67 @@ cis_ssh_client_alive_interval: 300
 cis_ssh_client_alive_count_max: 3
 cis_ssh_permit_root_login: "no"
 cis_ssh_allowed_groups: []   # e.g. ["sshusers"] — leave empty to skip AllowGroups
+
+# CIS 5.1 - key-only SSH access. Only flip this to "no" once you've confirmed
+# cis_authorized_keys below are actually deployed and working - the
+# ssh_access role runs before any *_cis role in site.yml specifically so
+# keys land before this takes effect, but verify with a --check run first.
+cis_ssh_password_auth: "no"
+
+# --- SSH access bootstrap (ssh_access role) ---
+# The account this repo creates/manages on every host - NOT the same as
+# ansible_user, which during first-ever bootstrap of a fresh box is "root"
+# (see hosts.example.ini header). Rename freely; "ops" is just a default.
+cis_create_admin_user: true
+cis_admin_username: "xyph4r-adm"
+
+# The account is created with NO password (locked - `passwd -S` shows L),
+# key-only by design. That means passwordless sudo is not just convenience
+# here, it's required: a locked account has no password sudo could check
+# against, so cis_admin_passwordless_sudo: false would make sudo
+# unconditionally fail for this user. Only set this false if you also set
+# cis_admin_password_hash below to give the account a real password.
+cis_admin_passwordless_sudo: true
+
+# Optional: give the account an actual password (e.g. for console/rescue
+# access, or to allow cis_admin_passwordless_sudo: false). Leave "" to keep
+# the account key-only/locked. Generate a hash with, e.g.:
+#   python3 -c 'import crypt,getpass; print(crypt.crypt(getpass.getpass(), crypt.mksalt(crypt.METHOD_SHA512)))'
+# Never put a real hash in a committed file - pass via ansible-vault or
+# --extra-vars instead, same as netbird_setup_key.
+cis_admin_password_hash: ""
+
+# Public keys only - these are meant to be distributed, safe to commit.
+# Deployed to cis_ssh_admin_user's (= cis_admin_username's) authorized_keys.
+cis_ssh_admin_user: "{{ cis_admin_username }}"
+cis_manage_authorized_keys: true
+cis_authorized_keys:
+  # xtc3br4@yk-prim - primary hardware key, also used for GitHub auth
+  - "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIB6/bpfCyJxgQ7VV2T2e4d4Ry6fC0fGyQ4VGa0W0Rs6jAAAABHNzaDo= xtc3br4-yk-prim"
+  # xtc3br4-sec - secondary/backup hardware key
+  - "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIEzQ2bT1k5eUQ0CO6pXhJT+oc3CjUh4NDmRfhLeGwETTAAAABHNzaDo= xtc3br4-yk-sec"
+
+# --- Netbird / private-network scaffolding (see ansible/roles/netbird) ---
+# Off by default - flip netbird_enabled: true and supply netbird_setup_key
+# (via --extra-vars, ansible-vault, or environment, NEVER committed) to join.
+netbird_enabled: false
+netbird_setup_key: ""          # secret - do not put a real value in group_vars
+netbird_management_url: ""     # blank = Netbird's default SaaS control plane; set for self-hosted
+
+# Firewall interface Netbird creates (default on Linux clients is wt0).
+cis_vpn_interface: wt0
+# TCP ports that should be reachable ONLY via the VPN interface, never
+# publicly - e.g. a Wazuh dashboard/API port once it's deployed. Wired into
+# every *_cis role's firewall config (firewalld zone / nftables iifname /
+# ufw "allow in on <iface>").
+cis_vpn_only_tcp_ports: []
+# Netbird typically does NOT need an inbound port opened publicly - peer
+# connections are established via STUN/ICE hole-punching with relay
+# fallback, same model as Tailscale/WireGuard mesh VPNs generally. Only
+# flip this on if you've pinned a static WireGuard port for reliability
+# and confirmed (via current Netbird docs) that it needs to be reachable.
+cis_netbird_expose_udp_port: false
+cis_netbird_udp_port: 51820
 
 # auditd
 cis_audit_log_max_mb: 50

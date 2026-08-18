@@ -1,0 +1,15 @@
+---
+ubuntu26cis_section1_filesystem_mac: true
+ubuntu26cis_section2_services: true
+ubuntu26cis_section3_network: true
+ubuntu26cis_section4_logging_auditing: true
+ubuntu26cis_section5_access_authentication: true
+ubuntu26cis_section6_system_maintenance: true
+
+ubuntu26cis_set_bootloader_password: false
+ubuntu26cis_enforce_apparmor: true
+ubuntu26cis_configure_aide: true
+ubuntu26cis_configure_ufw: true
+
+# Extra TCP ports to allow through ufw besides SSH (e.g. [80, 443]).
+ubuntu26cis_extra_allowed_tcp_ports: []

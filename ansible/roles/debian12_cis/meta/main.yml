@@ -8,8 +8,8 @@ galaxy_info:
   platforms:
     - name: Debian
       versions: ["12"]
-galaxy_tags:
-  - security
-  - hardening
-  - cis
+  galaxy_tags:
+    - security
+    - hardening
+    - cis
 dependencies: []

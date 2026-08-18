@@ -58,3 +58,47 @@
   failed_when: false
   when: rocky9cis_configure_firewalld
   tags: [cis_3.4]
+
+# --- 3.5 VPN-only management ports (Netbird scaffolding) ---
+# cis_vpn_only_tcp_ports stays empty until you actually deploy something
+# that should be VPN-only (e.g. a Wazuh dashboard) - no-op by default.
+
+- name: "3.5 | Create firewalld zone for VPN-only management ports"
+  ansible.posix.firewalld:
+    zone: netbird-mgmt
+    state: present
+    permanent: true
+  when: rocky9cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+  notify: reload firewalld
+  tags: [cis_3.5]
+
+- name: "3.5 | Bind the Netbird interface to the netbird-mgmt zone"
+  ansible.posix.firewalld:
+    zone: netbird-mgmt
+    interface: "{{ cis_vpn_interface }}"
+    permanent: true
+    state: enabled
+  when: rocky9cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+  notify: reload firewalld
+  tags: [cis_3.5]
+
+- name: "3.5 | Allow management ports only within the netbird-mgmt zone"
+  ansible.posix.firewalld:
+    zone: netbird-mgmt
+    port: "{{ item }}/tcp"
+    permanent: true
+    state: enabled
+  loop: "{{ cis_vpn_only_tcp_ports }}"
+  when: rocky9cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+  notify: reload firewalld
+  tags: [cis_3.5]
+
+- name: "3.5 | Allow Netbird UDP port publicly (optional, usually unnecessary)"
+  ansible.posix.firewalld:
+    port: "{{ cis_netbird_udp_port }}/udp"
+    permanent: true
+    state: enabled
+    zone: public
+  when: rocky9cis_configure_firewalld and cis_netbird_expose_udp_port
+  notify: reload firewalld
+  tags: [cis_3.5]

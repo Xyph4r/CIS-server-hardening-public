@@ -28,6 +28,7 @@
     - { key: "Port", value: "{{ cis_ssh_port }}" }
     - { key: "PermitRootLogin", value: "{{ cis_ssh_permit_root_login }}" }
     - { key: "PermitEmptyPasswords", value: "no" }
+    - { key: "PasswordAuthentication", value: "{{ cis_ssh_password_auth }}" }
     - { key: "IgnoreRhosts", value: "yes" }
     - { key: "HostbasedAuthentication", value: "no" }
     - { key: "X11Forwarding", value: "no" }
@@ -62,7 +63,8 @@
 - name: "5.2 | Ensure sudo log file is defined"
   ansible.builtin.copy:
     dest: /etc/sudoers.d/cis-logfile
-    content: 'Defaults logfile="/var/log/sudo.log"\n'
+    content: |
+      Defaults logfile="/var/log/sudo.log"
     owner: root
     group: root
     mode: "0440"

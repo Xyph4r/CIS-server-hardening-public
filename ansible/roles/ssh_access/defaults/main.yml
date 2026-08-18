@@ -1,0 +1,10 @@
+---
+# Actual values live in inventory/group_vars/all.yml so they're managed in
+# one place alongside the other cross-OS settings.
+cis_create_admin_user: true
+cis_admin_username: "ops"
+cis_admin_passwordless_sudo: true
+cis_admin_password_hash: ""
+cis_ssh_admin_user: "{{ cis_admin_username }}"
+cis_manage_authorized_keys: true
+cis_authorized_keys: []

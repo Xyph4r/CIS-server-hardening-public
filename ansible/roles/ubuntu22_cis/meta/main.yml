@@ -8,8 +8,8 @@ galaxy_info:
   platforms:
     - name: Ubuntu
       versions: ["22.04"]
-galaxy_tags:
-  - security
-  - hardening
-  - cis
+  galaxy_tags:
+    - security
+    - hardening
+    - cis
 dependencies: []

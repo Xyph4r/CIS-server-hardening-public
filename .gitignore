@@ -1,9 +1,9 @@
 *.retry
 .vault_pass
 *.vault
-inventory/hosts.ini
-inventory/production*
-inventory/group_vars/vault*.yml
+**/inventory/hosts.ini
+**/inventory/production*
+**/inventory/group_vars/vault*.yml
 *.log
 reports/
 .cache/

@@ -1,0 +1,24 @@
+---
+cis_firewall_service: ufw
+cis_mac_type: apparmor
+cis_disable_filesystems:
+  - cramfs
+  - freevxfs
+  - hfs
+  - hfsplus
+  - jffs2
+  - squashfs
+  - udf
+cis_time_sync_service: systemd-timesyncd
+
+# OpenSCAP - Ubuntu 26.04 LTS shipped April 2026; scap-security-guide and the
+# official CIS benchmark for it may lag the OS release by months. Candidates
+# are tried in order - falls back to 24.04/22.04 content (same upstream
+# family, close enough to be useful) if 26.04-specific content isn't
+# published yet for your installed SSG version. Verify with:
+#   oscap info /usr/share/xml/scap/ssg/content/<file>
+scap_datastream_candidates:
+  - ssg-ubuntu2604-ds.xml
+  - ssg-ubuntu2404-ds.xml
+  - ssg-ubuntu2204-ds.xml
+scap_profile_id: xccdf_org.ssgproject.content_profile_cis_level1_server

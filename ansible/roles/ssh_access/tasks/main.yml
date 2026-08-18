@@ -1,0 +1,48 @@
+---
+# Bootstrap: creates the admin account and deploys the team's public keys to
+# it, BEFORE any *_cis role runs - the access_authentication sections may
+# disable password auth (cis_ssh_password_auth), so the key-based account
+# has to exist and work first.
+#
+# First-ever connection to a freshly-delivered box (e.g. Hetzner) is root
+# with a password - that's a separate, one-time bootstrap step (see
+# hosts.example.ini header). This role manages the account you actually
+# want to use afterwards, not that initial root/password access.
+
+- name: Determine the sudo-equivalent group for this OS family
+  ansible.builtin.set_fact:
+    cis_admin_group: "{{ 'wheel' if ansible_os_family == 'RedHat' else 'sudo' }}"
+  tags: [ssh_access]
+
+- name: "Create the admin user ({{ cis_admin_username }})"
+  ansible.builtin.user:
+    name: "{{ cis_admin_username }}"
+    groups: "{{ cis_admin_group }}"
+    append: true
+    shell: /bin/bash
+    create_home: true
+    state: present
+    password: "{{ cis_admin_password_hash if cis_admin_password_hash | length > 0 else omit }}"
+  when: cis_create_admin_user
+  no_log: "{{ cis_admin_password_hash | length > 0 }}"
+  tags: [ssh_access]
+
+- name: "Grant {{ cis_admin_username }} sudo access"
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ cis_admin_username }}"
+    content: "{{ cis_admin_username }} ALL=(ALL) {{ 'NOPASSWD:' if cis_admin_passwordless_sudo else '' }}ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  when: cis_create_admin_user
+  tags: [ssh_access]
+
+- name: "Ensure {{ cis_ssh_admin_user }} has the approved SSH public keys"
+  ansible.posix.authorized_key:
+    user: "{{ cis_ssh_admin_user }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ cis_authorized_keys }}"
+  when: cis_manage_authorized_keys and cis_authorized_keys | length > 0
+  tags: [ssh_access]

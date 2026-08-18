@@ -8,8 +8,8 @@ galaxy_info:
   platforms:
     - name: Rocky
       versions: ["9"]
-galaxy_tags:
-  - security
-  - hardening
-  - cis
+  galaxy_tags:
+    - security
+    - hardening
+    - cis
 dependencies: []
