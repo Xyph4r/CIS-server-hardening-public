@@ -1,0 +1,11 @@
+---
+# Real values live in inventory/group_vars/all.yml (cross-OS) and
+# inventory/group_vars/<os>.yml (fail2ban_banaction, since it depends on
+# which firewall backend that OS role uses).
+fail2ban_enabled: false
+fail2ban_ignoreip: []
+fail2ban_bantime: 1h
+fail2ban_findtime: 10m
+fail2ban_maxretry: 5
+fail2ban_sshd_port: "{{ cis_ssh_port | default(22) }}"
+fail2ban_banaction: iptables-multiport

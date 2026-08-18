@@ -91,6 +91,19 @@ cis_vpn_only_tcp_ports: []
 cis_netbird_expose_udp_port: false
 cis_netbird_udp_port: 51820
 
+# --- fail2ban (see ansible/roles/fail2ban) ---
+# Off by default. Not a CIS Benchmark control - it's an operational add-on
+# that bans a source IP after repeated SSH auth failures. Useful given
+# key-only auth already makes brute-forcing futile (this just cuts the
+# noise), but has a real self-lockout risk if your own IP trips maxretry
+# and isn't in fail2ban_ignoreip. bantime is non-permanent (1h) so a
+# self-ban isn't catastrophic. Add your own IP(s)/CIDR before enabling:
+fail2ban_enabled: false
+fail2ban_ignoreip: []          # e.g. ["203.0.113.4/32"] - your known admin IP(s)
+fail2ban_bantime: 1h
+fail2ban_findtime: 10m
+fail2ban_maxretry: 5
+
 # auditd
 cis_audit_log_max_mb: 50
 cis_audit_num_logs: 5

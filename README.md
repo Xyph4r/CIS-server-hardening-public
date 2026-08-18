@@ -20,7 +20,7 @@ the closest role, rename, and adjust deltas. The official CIS Benchmark PDFs
 are kept outside this repo (not automated content, and CIS's license terms
 don't clearly permit redistribution) — see `TODO.md`.
 
-Two roles run outside the per-OS `*_cis` roles, against every host:
+Three roles run outside the per-OS `*_cis` roles, against every host:
 
 - **`ssh_access`** — creates the admin account (`cis_admin_username`, default
   `ops`) and deploys the team's SSH public keys (`cis_authorized_keys`) to
@@ -28,6 +28,9 @@ Two roles run outside the per-OS `*_cis` roles, against every host:
   password authentication. Does **not** handle the very first connection to
   a freshly-delivered box, which is still root+password — see "Bootstrapping
   a new server" below.
+- **`fail2ban`** — opt-in (`fail2ban_enabled: false` by default) SSH
+  brute-force ban. Not a CIS control, an operational add-on — see
+  "fail2ban" below.
 - **`netbird`** — opt-in (`netbird_enabled: false` by default) install/join
   for a private Netbird mesh network. See "Private networking" below.
 
@@ -42,6 +45,7 @@ ansible/            Hardening playbooks + roles (the remediation side)
     debian12_cis/
     ubuntu22_cis/
     ubuntu26_cis/
+    fail2ban/         opt-in SSH brute-force ban
     netbird/          opt-in private-network join
 scap/                OpenSCAP scanning + SCAP-generated remediation (the assessment side)
   roles/openscap_scan/
@@ -120,6 +124,38 @@ ansible-playbook -i ../ansible/inventory/hosts.ini playbooks/scap_scan.yml
 Always run `--check --diff` against a non-production host or snapshot first.
 Some controls (SSH access hardening, sudo `use_pty`, PAM lockout thresholds)
 can lock you out of a misconfigured box if applied blind.
+
+## fail2ban — optional, not a CIS control
+
+Bans a source IP after repeated SSH auth failures. Off by default
+(`fail2ban_enabled: false`). Worth having given the constant background
+noise of bots hitting any public IP on port 22, but genuinely optional:
+`PasswordAuthentication no` already makes brute-forcing this box futile on
+its own — fail2ban just cuts the log noise and connection churn.
+
+**Add your own IP(s) before enabling it**, or a burst of your own failed
+connections (e.g. an SSH agent offering the wrong key before the right one,
+repeated Ansible reconnects during a bad run) can trip `maxretry` and
+temporarily ban yourself:
+
+```yaml
+# group_vars/all.yml
+fail2ban_enabled: true
+fail2ban_ignoreip:
+  - "203.0.113.4/32"   # your actual admin IP(s)/CIDR
+```
+
+Bans are non-permanent (`fail2ban_bantime: 1h` by default) specifically so a
+self-ban isn't catastrophic — it expires on its own. The firewall action
+used to actually block traffic (`fail2ban_banaction`) is set per-OS in
+`group_vars/<os>.yml` to match that role's firewall backend
+(firewalld/nftables/iptables-under-ufw) — verify it against
+`ls /etc/fail2ban/action.d/` on the real box before fully trusting it, same
+caveat as everything else version-dependent in this repo.
+
+```bash
+ansible-playbook -i inventory/hosts.ini site.yml --tags fail2ban
+```
 
 ## Private networking (Netbird) — scaffolding, not full architecture
 

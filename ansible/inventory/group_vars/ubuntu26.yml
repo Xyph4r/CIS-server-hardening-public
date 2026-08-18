@@ -22,3 +22,9 @@ scap_datastream_candidates:
   - ssg-ubuntu2404-ds.xml
   - ssg-ubuntu2204-ds.xml
 scap_profile_id: xccdf_org.ssgproject.content_profile_cis_level1_server
+
+# fail2ban banaction - verify ufw's backend (iptables vs nftables) on 26.04
+# specifically before trusting this; iptables-multiport is the safe/stable
+# default but 26.04 may default ufw to nftables. Verify against
+# `ls /etc/fail2ban/action.d/` on the actual installed version either way.
+fail2ban_banaction: iptables-multiport

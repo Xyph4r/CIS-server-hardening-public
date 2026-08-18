@@ -2,9 +2,9 @@
 - name: Assert this is Debian 12
   ansible.builtin.assert:
     that:
-      - ansible_distribution == "Debian"
-      - ansible_distribution_major_version == "12"
-    fail_msg: "debian12_cis role targets Debian 12 only (found {{ ansible_distribution }} {{ ansible_distribution_version }})"
+      - ansible_facts['distribution'] == "Debian"
+      - ansible_facts['distribution_major_version'] == "12"
+    fail_msg: "debian12_cis role targets Debian 12 only (found {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }})"
 
 - name: "CIS Section 1 - Initial setup, filesystem, MAC"
   ansible.builtin.include_tasks: section1_initial_setup.yml

@@ -2,24 +2,34 @@
 
 ## Findings from the first live run (hermes-nue, Rocky 10)
 
-- `--check --diff` fails partway through section 3 (`firewalld` service
-  task) - this is a `--check` mode artifact, not a real bug: package
-  installs are simulated in check mode, so a following "manage this
-  package's service" task fails because the unit genuinely isn't there yet.
-  Real (non-check) runs aren't affected. If this gets annoying on repeat dry
-  runs, the fix is `ignore_errors: "{{ ansible_check_mode }}"` on the
-  service-enable task that immediately follows a package install, wherever
-  the package might not already be present.
-- `/etc/yum.repos.d` didn't exist on the live Rocky 10 box (task 1.2.2
-  skipped harmlessly) - confirms Rocky 10 changed something about repo file
-  layout vs Rocky 9. Needs investigating before relying on 1.2.x GPG-check
-  enforcement actually doing anything on Rocky 10.
-- `ansible_distribution`/`ansible_os_family`/etc. used bare throughout
-  every role (assert tasks, `ssh_access`'s OS-family check, ...) trigger
-  `INJECT_FACTS_AS_VARS` deprecation warnings on ansible-core 2.21+ -
-  cosmetic today, but ansible-core 2.24 removes the default that makes bare
-  fact vars work at all. Mechanical fix (swap to `ansible_facts['distribution']`
-  etc.) needed eventually, not urgently.
+Full run against a real box, end to end: bootstrap → hardening → verified
+`PermitRootLogin no` / `PasswordAuthentication no` actually reject root
+(client offers a password, server refuses, disconnects after `MaxAuthTries`)
+while `xyph4r-adm` key-only access keeps working. What came up along the way:
+
+- **FIXED** - `content: 'Defaults logfile="/var/log/sudo.log"\n'` used
+  single-quoted YAML, so `\n` was written as two literal characters instead
+  of a real newline, breaking `visudo -cf` validation and failing task 5.2
+  on every OS role (same copy-pasted line in all five). Now a `content: |`
+  block scalar in all five roles.
+- **FIXED** - `ansible_distribution`/`ansible_os_family`/etc. used bare
+  throughout every role triggered `INJECT_FACTS_AS_VARS` deprecation
+  warnings on ansible-core 2.21+. Swapped to `ansible_facts['distribution']`
+  etc. everywhere (`ssh_access` + all five `*_cis` roles).
+- **FIXED (cosmetic)** - task 1.2.2 warned `Unable to find '/etc/yum.repos.d'`
+  via `with_fileglob`'s silent-skip-with-warning behavior. Now gated behind
+  an explicit `stat` check instead - same effective behavior, no warning.
+- **STILL OPEN** - *why* `/etc/yum.repos.d` didn't exist on the live Rocky 10
+  box in the first place is unconfirmed - repo file layout may have moved in
+  Rocky/RHEL 10. Next login, check
+  `ls /etc/yum.repos.d /etc/dnf/repos.d 2>/dev/null` and report back so 1.2.2
+  can point at the real path - until then, GPG-check enforcement for repo
+  files is a no-op on Rocky 10.
+- **STILL OPEN (accepted, not a bug)** - `--check --diff` fails partway
+  through section 3 (`firewalld` service task): package installs are
+  simulated in check mode, so a following "manage this package's service"
+  task fails because the unit genuinely isn't there yet. Real (non-check)
+  runs aren't affected.
 
 ## Manual setup checklist (do these before running site.yml for real)
 

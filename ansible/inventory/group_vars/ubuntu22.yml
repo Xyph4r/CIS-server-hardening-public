@@ -15,3 +15,8 @@ cis_time_sync_service: systemd-timesyncd
 scap_datastream_candidates:
   - ssg-ubuntu2204-ds.xml
 scap_profile_id: xccdf_org.ssgproject.content_profile_cis_level1_server
+
+# fail2ban banaction - ufw runs on iptables under the hood on 22.04, and
+# iptables-multiport is fail2ban's most stable, long-tested action.
+# Verify against `ls /etc/fail2ban/action.d/` on the actual installed version.
+fail2ban_banaction: iptables-multiport

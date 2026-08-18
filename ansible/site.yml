@@ -39,6 +39,13 @@
   roles:
     - ubuntu26_cis
 
+- name: Install and configure fail2ban (opt-in, see group_vars/all.yml)
+  hosts: cis_servers
+  become: true
+  roles:
+    - fail2ban
+  tags: [fail2ban]
+
 - name: Join servers to the private Netbird network (opt-in, see group_vars/all.yml)
   hosts: cis_servers
   become: true

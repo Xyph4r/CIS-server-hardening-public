@@ -2,9 +2,9 @@
 - name: Assert this is Rocky Linux 10
   ansible.builtin.assert:
     that:
-      - ansible_distribution == "Rocky"
-      - ansible_distribution_major_version == "10"
-    fail_msg: "rocky10_cis role targets Rocky Linux 10 only (found {{ ansible_distribution }} {{ ansible_distribution_version }})"
+      - ansible_facts['distribution'] == "Rocky"
+      - ansible_facts['distribution_major_version'] == "10"
+    fail_msg: "rocky10_cis role targets Rocky Linux 10 only (found {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }})"
 
 - name: "CIS Section 1 - Initial setup, filesystem, MAC"
   ansible.builtin.include_tasks: section1_initial_setup.yml

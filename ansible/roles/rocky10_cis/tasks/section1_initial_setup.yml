@@ -38,6 +38,12 @@
     insertafter: '^\[main\]'
   tags: [cis_1.2.1]
 
+- name: "1.2.2 | Check for a legacy /etc/yum.repos.d directory"
+  ansible.builtin.stat:
+    path: /etc/yum.repos.d
+  register: rocky10cis_yum_repos_d
+  tags: [cis_1.2.2]
+
 - name: "1.2.2 | Ensure repo GPG check is enforced for all .repo files"
   ansible.builtin.replace:
     path: "{{ item }}"
@@ -45,6 +51,7 @@
     replace: 'gpgcheck=1'
   with_fileglob:
     - /etc/yum.repos.d/*.repo
+  when: rocky10cis_yum_repos_d.stat.exists
   tags: [cis_1.2.2]
 
 # --- 1.3 Mandatory Access Control: SELinux ---

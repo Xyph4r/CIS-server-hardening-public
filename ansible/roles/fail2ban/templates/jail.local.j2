@@ -1,0 +1,15 @@
+# Managed by Ansible (fail2ban role). Local edits will be overwritten.
+
+[DEFAULT]
+bantime  = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+maxretry = {{ fail2ban_maxretry }}
+banaction = {{ fail2ban_banaction }}
+ignoreip = 127.0.0.1/8 ::1{% if fail2ban_ignoreip | length > 0 %} {{ fail2ban_ignoreip | join(' ') }}{% endif %}
+
+
+[sshd]
+enabled = true
+port    = {{ fail2ban_sshd_port }}
+logpath = %(sshd_log)s
+backend = %(sshd_backend)s
