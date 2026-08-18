@@ -1,0 +1,88 @@
+---
+# CIS Ubuntu 22.04 - Section 3: Network
+# sysctl hardening + ufw baseline (default deny incoming, allow SSH).
+
+- name: "3.2 | Network sysctl hardening"
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop:
+    - { key: "net.ipv4.ip_forward", value: "0" }
+    - { key: "net.ipv4.conf.all.send_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.send_redirects", value: "0" }
+    - { key: "net.ipv4.conf.all.accept_source_route", value: "0" }
+    - { key: "net.ipv4.conf.default.accept_source_route", value: "0" }
+    - { key: "net.ipv4.conf.all.accept_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.accept_redirects", value: "0" }
+    - { key: "net.ipv4.conf.all.secure_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.secure_redirects", value: "0" }
+    - { key: "net.ipv4.conf.all.log_martians", value: "1" }
+    - { key: "net.ipv4.conf.default.log_martians", value: "1" }
+    - { key: "net.ipv4.icmp_echo_ignore_broadcasts", value: "1" }
+    - { key: "net.ipv4.icmp_ignore_bogus_error_responses", value: "1" }
+    - { key: "net.ipv4.conf.all.rp_filter", value: "1" }
+    - { key: "net.ipv4.conf.default.rp_filter", value: "1" }
+    - { key: "net.ipv4.tcp_syncookies", value: "1" }
+    - { key: "net.ipv6.conf.all.accept_ra", value: "0" }
+    - { key: "net.ipv6.conf.default.accept_ra", value: "0" }
+    - { key: "net.ipv6.conf.all.accept_redirects", value: "0" }
+    - { key: "net.ipv6.conf.default.accept_redirects", value: "0" }
+  tags: [cis_3.2]
+
+- name: "3.4 | Ensure ufw is installed"
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+  when: ubuntu22cis_configure_ufw
+  tags: [cis_3.4]
+
+- name: "3.4 | Ensure iptables-persistent / other firewall managers are absent"
+  ansible.builtin.apt:
+    name: iptables-persistent
+    state: absent
+  when: ubuntu22cis_configure_ufw
+  failed_when: false
+  tags: [cis_3.4]
+
+- name: "3.4 | Set ufw default policy (deny incoming, allow outgoing)"
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+    - { direction: routed, policy: deny }
+  when: ubuntu22cis_configure_ufw
+  tags: [cis_3.4]
+
+- name: "3.4 | Allow SSH through ufw"
+  community.general.ufw:
+    rule: limit
+    port: "{{ cis_ssh_port | string }}"
+    proto: tcp
+  when: ubuntu22cis_configure_ufw
+  tags: [cis_3.4]
+
+- name: "3.4 | Allow extra application ports through ufw"
+  community.general.ufw:
+    rule: allow
+    port: "{{ item | string }}"
+    proto: tcp
+  loop: "{{ ubuntu22cis_extra_allowed_tcp_ports }}"
+  when: ubuntu22cis_configure_ufw
+  tags: [cis_3.4]
+
+- name: "3.4 | Enable ufw logging"
+  community.general.ufw:
+    logging: 'on'
+  when: ubuntu22cis_configure_ufw
+  tags: [cis_3.4]
+
+- name: "3.4 | Enable ufw"
+  community.general.ufw:
+    state: enabled
+  when: ubuntu22cis_configure_ufw
+  tags: [cis_3.4]

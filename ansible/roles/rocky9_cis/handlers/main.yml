@@ -1,0 +1,30 @@
+---
+- name: restart sshd
+  ansible.builtin.service:
+    name: sshd
+    state: restarted
+
+- name: reload sysctl
+  ansible.builtin.command: sysctl --system
+  changed_when: true
+
+- name: restart auditd
+  ansible.builtin.command: service auditd restart
+  changed_when: true
+  # auditd is special-cased on RHEL-family: `systemctl restart auditd` is
+  # blocked by design; the sysv-compat `service` shim is the supported path.
+
+- name: restart rsyslog
+  ansible.builtin.service:
+    name: rsyslog
+    state: restarted
+
+- name: update grub
+  ansible.builtin.command: grub2-mkconfig -o /boot/grub2/grub.cfg
+  changed_when: true
+
+- name: rebuild aide database
+  ansible.builtin.command: aide --init
+  changed_when: true
+  async: 3600
+  poll: 0

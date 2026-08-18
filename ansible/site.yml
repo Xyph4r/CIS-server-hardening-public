@@ -1,0 +1,22 @@
+---
+# CIS Server Hardening - master playbook
+# Run with --check --diff against a non-production target first.
+# Selective runs: --tags cis_5,cis_5.2.10   or   --skip-tags ssh_hardening
+
+- name: Harden Rocky Linux 9 servers (CIS)
+  hosts: rocky9
+  become: true
+  roles:
+    - rocky9_cis
+
+- name: Harden Debian 12 servers (CIS)
+  hosts: debian12
+  become: true
+  roles:
+    - debian12_cis
+
+- name: Harden Ubuntu 22.04 servers (CIS)
+  hosts: ubuntu22
+  become: true
+  roles:
+    - ubuntu22_cis

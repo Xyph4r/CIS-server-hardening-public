@@ -1,0 +1,92 @@
+---
+# CIS Debian 12 - Section 4: Logging and Auditing
+
+- name: "4.1 | Ensure auditd is installed"
+  ansible.builtin.apt:
+    name:
+      - auditd
+      - audispd-plugins
+    state: present
+  tags: [cis_4.1]
+
+- name: "4.1 | Ensure auditd is enabled and running"
+  ansible.builtin.service:
+    name: auditd
+    state: started
+    enabled: true
+  tags: [cis_4.1]
+
+- name: "4.1.2 | Configure auditd log rotation and storage"
+  ansible.builtin.lineinfile:
+    path: /etc/audit/auditd.conf
+    regexp: "^{{ item.key }}\\s*="
+    line: "{{ item.key }} = {{ item.value }}"
+  loop:
+    - { key: "max_log_file", value: "{{ cis_audit_log_max_mb }}" }
+    - { key: "num_logs", value: "{{ cis_audit_num_logs }}" }
+    - { key: "max_log_file_action", value: "keep_logs" }
+    - { key: "space_left_action", value: "{{ cis_audit_space_left_action }}" }
+    - { key: "action_mail_acct", value: "{{ cis_audit_action_mail_acct }}" }
+    - { key: "admin_space_left_action", value: "halt" }
+  notify: restart auditd
+  tags: [cis_4.1.2]
+
+- name: "4.1.3 | Ensure audit rules are configured for CIS baseline events"
+  ansible.builtin.copy:
+    dest: /etc/audit/rules.d/cis-baseline.rules
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      -D
+      -b 8192
+      -w /etc/passwd -p wa -k identity
+      -w /etc/group -p wa -k identity
+      -w /etc/gshadow -p wa -k identity
+      -w /etc/shadow -p wa -k identity
+      -w /etc/security/opasswd -p wa -k identity
+      -w /etc/sudoers -p wa -k scope
+      -w /etc/sudoers.d/ -p wa -k scope
+      -w /var/log/sudo.log -p wa -k actions
+      -w /var/run/utmp -p wa -k session
+      -w /var/log/wtmp -p wa -k logins
+      -w /var/log/btmp -p wa -k logins
+      -a always,exit -F arch=b64 -S execve -C uid!=euid -F euid=0 -k privileged
+      -w /etc/apparmor/ -p wa -k mac_policy
+      -w /etc/apparmor.d/ -p wa -k mac_policy
+      -w /sbin/insmod -p x -k modules
+      -w /sbin/rmmod -p x -k modules
+      -w /sbin/modprobe -p x -k modules
+      -e 2
+  notify: restart auditd
+  tags: [cis_4.1.3]
+
+- name: "4.2 | Ensure rsyslog is installed"
+  ansible.builtin.apt:
+    name: rsyslog
+    state: present
+  tags: [cis_4.2]
+
+- name: "4.2 | Ensure rsyslog is enabled and running"
+  ansible.builtin.service:
+    name: rsyslog
+    state: started
+    enabled: true
+  tags: [cis_4.2]
+
+- name: "4.2.3 | Ensure logs are forwarded to a remote log host"
+  ansible.builtin.lineinfile:
+    path: /etc/rsyslog.conf
+    line: "*.* @@{{ cis_remote_log_host | default('') }}"
+    insertafter: EOF
+  when: cis_remote_log_host is defined and cis_remote_log_host | length > 0
+  notify: restart rsyslog
+  tags: [cis_4.2.3]
+
+- name: "4.3 | Ensure log file permissions are configured"
+  ansible.builtin.file:
+    path: /var/log
+    mode: "0750"
+    owner: root
+    group: root
+  tags: [cis_4.3]

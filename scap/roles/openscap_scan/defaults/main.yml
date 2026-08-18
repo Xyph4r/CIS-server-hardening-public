@@ -1,0 +1,9 @@
+---
+scap_content_dir: /usr/share/xml/scap/ssg/content
+scap_remote_report_dir: /var/tmp/scap-reports
+scap_local_reports_dir: "{{ playbook_dir }}/../reports"
+
+# Fail the Ansible run if oscap itself errors (bad profile/datastream).
+# A scan that completes but finds failed rules is NOT an oscap error and
+# will not fail the play - that's the whole point of scanning.
+scap_fail_on_scan_error: true

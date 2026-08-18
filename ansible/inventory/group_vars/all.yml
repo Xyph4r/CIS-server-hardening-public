@@ -1,0 +1,44 @@
+---
+# Values shared across every CIS role regardless of OS.
+# Per-OS overrides live in group_vars/<group>.yml (rocky.yml/debian.yml/ubuntu.yml).
+
+cis_org_name: "4x-Labs"
+cis_banner_text: |
+  Authorized uses only. All activity may be monitored and reported.
+
+# Password policy (CIS 5.x-equivalent controls, applied where the OS supports it)
+cis_password_max_days: 365
+cis_password_min_days: 1
+cis_password_warn_age: 7
+cis_password_min_length: 14
+
+# Account lockout (pam_faillock / pam_tally2 equivalent)
+cis_account_lockout_attempts: 5
+cis_account_lockout_interval_sec: 900
+cis_account_unlock_time_sec: 900
+
+# Idle session timeout (TMOUT), in seconds
+cis_shell_timeout_sec: 900
+
+# SSH hardening
+cis_ssh_port: 22
+cis_ssh_max_auth_tries: 4
+cis_ssh_client_alive_interval: 300
+cis_ssh_client_alive_count_max: 3
+cis_ssh_permit_root_login: "no"
+cis_ssh_allowed_groups: []   # e.g. ["sshusers"] — leave empty to skip AllowGroups
+
+# auditd
+cis_audit_log_max_mb: 50
+cis_audit_num_logs: 5
+cis_audit_space_left_action: email
+cis_audit_action_mail_acct: root
+
+# Set false to skip a whole section across every role (see roles/*/defaults/main.yml
+# for finer-grained per-control toggles).
+cis_section_initial_setup: true
+cis_section_services: true
+cis_section_network: true
+cis_section_logging_auditing: true
+cis_section_access_authentication: true
+cis_section_system_maintenance: true
