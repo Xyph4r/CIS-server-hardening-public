@@ -204,8 +204,16 @@ What's in place now so that work isn't blocked later:
 `*_cis` hardening plays specifically so the `wt0` interface already exists
 by the time the firewall-trust tasks run — on a full run this is automatic.
 If you use `--tags netbird` in isolation to join a host for the first time,
-follow up with a full run (or `--tags netbird,cis_3.5`) so the firewall
-trust rule actually gets applied.
+follow up with a full run (or `--tags cis_3.4,cis_3.5`) so the firewall
+trust rule actually gets applied. **`netbird_enabled=true` has to be passed
+again on that follow-up command too** — Ansible variables don't persist
+between separate `ansible-playbook` invocations, so without it the
+`when: netbird_enabled | bool and ...` guard on the trust-rule task
+correctly (and silently) evaluates false and skips:
+```bash
+ansible-playbook -i inventory/hosts.ini site.yml --tags cis_3.4,cis_3.5 \
+  --limit <os_group> -e netbird_enabled=true
+```
 
 So the intended pattern once you deploy something like Wazuh: don't expose
 its dashboard/API port publicly at all — add it to `cis_vpn_only_tcp_ports`

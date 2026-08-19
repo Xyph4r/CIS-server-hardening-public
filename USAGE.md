@@ -82,10 +82,17 @@ ansible-playbook -i inventory/hosts.ini site.yml --tags netbird --limit <os_grou
 
 # --tags netbird runs in isolation, so the firewall's "trust the wt0
 # interface" rule hasn't been applied yet - follow up with the firewall
-# section (or a full run):
-ansible-playbook -i inventory/hosts.ini site.yml --tags cis_3.4,cis_3.5 --limit <os_group>
+# section (or a full run). netbird_enabled=true has to be passed AGAIN here -
+# Ansible vars don't persist between separate invocations, so without it
+# this silently skips the trust-rule task instead of applying it:
+ansible-playbook -i inventory/hosts.ini site.yml --tags cis_3.4,cis_3.5 \
+  --limit <os_group> -e netbird_enabled=true
 
-# Verify:
+# Verify wt0 actually landed in the firewall's trusted zone/equivalent, not
+# just that the interface exists:
+#   firewalld (Rocky/CentOS): firewall-cmd --get-active-zones
+#   nftables (Debian):        nft list ruleset | grep -A2 -B2 wt0
+#   ufw (Ubuntu):              ufw status | grep wt0
 ssh <cis_admin_username>@<host_or_ip> "netbird status -d"
 
 # ============================================================================

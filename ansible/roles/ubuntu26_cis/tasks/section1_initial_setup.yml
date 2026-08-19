@@ -110,7 +110,7 @@
       - apparmor
       - apparmor-utils
     state: present
-  when: ubuntu26cis_enforce_apparmor
+  when: ubuntu26cis_enforce_apparmor | bool
   tags: [cis_1.3.1]
 
 - name: "1.3.2 | Ensure AppArmor is not disabled in bootloader config"
@@ -118,7 +118,7 @@
     path: /etc/default/grub
     regexp: '\bapparmor=0\b'
     replace: ''
-  when: ubuntu26cis_enforce_apparmor
+  when: ubuntu26cis_enforce_apparmor | bool
   notify: update grub
   tags: [cis_1.3.2]
 
@@ -127,12 +127,12 @@
     name: apparmor
     state: started
     enabled: true
-  when: ubuntu26cis_enforce_apparmor
+  when: ubuntu26cis_enforce_apparmor | bool
   tags: [cis_1.3.3]
 
 - name: "1.3.4 | Set all AppArmor profiles to enforce mode"
   ansible.builtin.command: aa-enforce /etc/apparmor.d/*
-  when: ubuntu26cis_enforce_apparmor
+  when: ubuntu26cis_enforce_apparmor | bool
   changed_when: true
   failed_when: false
   tags: [cis_1.3.4]
@@ -200,14 +200,14 @@
   ansible.builtin.apt:
     name: aide
     state: present
-  when: ubuntu26cis_configure_aide
+  when: ubuntu26cis_configure_aide | bool
   tags: [cis_1.4]
 
 - name: "1.4 | Check whether AIDE database already exists"
   ansible.builtin.stat:
     path: /var/lib/aide/aide.db
   register: ubuntu26cis_aide_db
-  when: ubuntu26cis_configure_aide
+  when: ubuntu26cis_configure_aide | bool
   tags: [cis_1.4]
 
 - name: "1.4 | Initialize AIDE database (first run only, async)"
@@ -223,5 +223,5 @@
     name: "CIS - AIDE integrity check"
     special_time: daily
     job: "/usr/bin/aide.wrapper --check"
-  when: ubuntu26cis_configure_aide
+  when: ubuntu26cis_configure_aide | bool
   tags: [cis_1.4]

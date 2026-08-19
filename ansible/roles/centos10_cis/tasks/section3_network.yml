@@ -36,7 +36,7 @@
   ansible.builtin.dnf:
     name: firewalld
     state: present
-  when: centos10cis_configure_firewalld
+  when: centos10cis_configure_firewalld | bool
   tags: [cis_3.4]
 
 - name: "3.4 | Ensure firewalld is enabled and running"
@@ -44,7 +44,7 @@
     name: firewalld
     state: started
     enabled: true
-  when: centos10cis_configure_firewalld
+  when: centos10cis_configure_firewalld | bool
   tags: [cis_3.4]
 
 - name: "3.4 | Ensure nftables/iptables are not simultaneously active with firewalld"
@@ -56,7 +56,7 @@
     - iptables
     - nftables
   failed_when: false
-  when: centos10cis_configure_firewalld
+  when: centos10cis_configure_firewalld | bool
   tags: [cis_3.4]
 
 # --- 3.5 Netbird firewall integration ---
@@ -73,7 +73,7 @@
     immediate: true
     state: enabled
   when: >
-    centos10cis_configure_firewalld and netbird_enabled | bool and cis_vpn_trust_interface | bool
+    centos10cis_configure_firewalld | bool and netbird_enabled | bool and cis_vpn_trust_interface | bool
     and cis_vpn_interface in ansible_facts['interfaces']
   tags: [cis_3.5]
 
@@ -87,7 +87,7 @@
     state: present
     permanent: true
   when: >
-    centos10cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+    centos10cis_configure_firewalld | bool and cis_vpn_only_tcp_ports | length > 0
     and cis_vpn_interface in ansible_facts['interfaces']
   notify: reload firewalld
   tags: [cis_3.5]
@@ -99,7 +99,7 @@
     permanent: true
     state: enabled
   when: >
-    centos10cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+    centos10cis_configure_firewalld | bool and cis_vpn_only_tcp_ports | length > 0
     and cis_vpn_interface in ansible_facts['interfaces']
   notify: reload firewalld
   tags: [cis_3.5]
@@ -112,7 +112,7 @@
     state: enabled
   loop: "{{ cis_vpn_only_tcp_ports }}"
   when: >
-    centos10cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+    centos10cis_configure_firewalld | bool and cis_vpn_only_tcp_ports | length > 0
     and cis_vpn_interface in ansible_facts['interfaces']
   notify: reload firewalld
   tags: [cis_3.5]
@@ -123,6 +123,6 @@
     permanent: true
     state: enabled
     zone: public
-  when: centos10cis_configure_firewalld and cis_netbird_expose_udp_port | bool
+  when: centos10cis_configure_firewalld | bool and cis_netbird_expose_udp_port | bool
   notify: reload firewalld
   tags: [cis_3.5]

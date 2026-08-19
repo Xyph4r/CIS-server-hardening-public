@@ -36,7 +36,7 @@
   ansible.builtin.apt:
     name: nftables
     state: present
-  when: debian13cis_configure_nftables
+  when: debian13cis_configure_nftables | bool
   tags: [cis_3.4]
 
 - name: "3.4 | Deploy baseline nftables ruleset (default-deny INPUT)"
@@ -46,7 +46,7 @@
     owner: root
     group: root
     mode: "0640"
-  when: debian13cis_configure_nftables
+  when: debian13cis_configure_nftables | bool
   notify: reload nftables
   tags: [cis_3.4]
 
@@ -55,7 +55,7 @@
     name: nftables
     state: started
     enabled: true
-  when: debian13cis_configure_nftables
+  when: debian13cis_configure_nftables | bool
   tags: [cis_3.4]
 
 - name: "3.4 | Ensure ufw is not simultaneously active with nftables"
@@ -64,5 +64,5 @@
     state: stopped
     enabled: false
   failed_when: false
-  when: debian13cis_configure_nftables
+  when: debian13cis_configure_nftables | bool
   tags: [cis_3.4]

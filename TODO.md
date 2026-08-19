@@ -1,5 +1,62 @@
 # TODO / before you trust this against real servers
 
+## Full repo audit (Rocky9/10 diff, bug sweep, doc accuracy)
+
+- **Rocky 9 vs Rocky 10: confirmed functionally identical** apart from
+  version numbers and the provisional-role comment - normalized diff shows
+  no divergence, so every fix applied to one was correctly applied to both.
+- **FIXED - defensive `| bool` sweep, repo-wide.** The `netbird_enabled`
+  strict-boolean bug (ansible-core 2.21 rejecting a CLI string `"true"` for
+  a bare `when:`) was fixed for the vars actually documented as
+  `-e`-overridable, but every OTHER role-default boolean
+  (`*_enforce_selinux`, `*_enforce_apparmor`, `*_configure_aide`,
+  `*_configure_firewalld`, `*_configure_ufw`, `*_configure_nftables`) was
+  left with the same latent bug - just not yet hit because nobody's
+  overridden them via `-e`. Added `| bool` to all ~93 remaining instances
+  across all 7 `*_cis` roles (both bare `when: <var>` lines and compound
+  `when: <var> and ...` lines in the 3.5 Netbird-firewall blocks). Zero
+  behavior change - `| bool` is a no-op on values already native booleans.
+- **FIXED - docs never told you to re-pass `netbird_enabled=true` on the
+  firewall-trust follow-up run.** Both README.md and USAGE.md's Netbird
+  section gave `--tags cis_3.4,cis_3.5 --limit <group>` as the follow-up
+  command with no `-e netbird_enabled=true` - since Ansible vars don't
+  persist between separate invocations, that command silently skips the
+  trust-rule task (exactly what happened live on `panoptes-flk`/centos10).
+  Both docs now include the flag and a comment explaining why it's needed.
+- **FIXED** - `TODO.md`'s OpenSCAP datastream verification list was missing
+  `debian13`/`centos10` (added after that note was written).
+- Confirmed clean (no regressions) repo-wide: `with_fileglob`,
+  `include_tasks`, the single-quote `\n` sudo-logfile bug, bare
+  `ansible_distribution`/`ansible_os_family` facts - all zero hits,
+  including in `scap/roles/openscap_scan` and `netbird`/`fail2ban`/
+  `ssh_access`, which hadn't been explicitly re-checked since their
+  original fixes.
+- Structural check: all 7 `*_cis` roles have identical file layout (10 yml
+  files: meta/defaults/handlers/tasks-main + 6 section files), all 6
+  sections wired into each role's `tasks/main.yml`, all 7 OS groups present
+  and consistent across `hosts.example.ini`, `[cis_servers:children]`, and
+  `site.yml`'s per-OS plays. group_vars files all carry the same required
+  keys (`cis_firewall_service`, `cis_mac_type`, `cis_disable_filesystems`,
+  `cis_time_sync_service`, `scap_datastream_candidates`, `scap_profile_id`,
+  `fail2ban_banaction`).
+
+## FIXED (properly, this time) - the `/etc/yum.repos.d` warning wasn't actually gone
+
+Earlier "fix" for task 1.2.2 (Rocky 9/10) added a `stat` check + `when:` guard
+so the repo-GPG-check task would *skip* cleanly instead of taking the wrong
+action when `/etc/yum.repos.d` doesn't exist. That part worked. What it
+didn't do: stop the warning itself (`Unable to find '/etc/yum.repos.d' in
+expected paths`) from still printing on every run - confirmed reproducing on
+the new `centos10_cis` role. Root cause: `with_fileglob` resolves its lookup
+during task pre-processing, *before* Ansible ever evaluates the task's
+`when:` - so the glob against a nonexistent directory happens (and warns)
+regardless of whether the task goes on to skip. Properly fixed by moving the
+conditional inside the lookup itself: `loop: "{{ query('ansible.builtin.fileglob',
+'/etc/yum.repos.d/*.repo') if <flag>.stat.exists else [] }}"` - the `query()`
+call only executes when the ternary's true-branch is taken, so the lookup
+plugin never runs against a path that doesn't exist. Applied to all three
+affected roles: `rocky9_cis`, `rocky10_cis`, `centos10_cis`.
+
 ## FIXED - granular `--tags cis_X.Y` selection never actually worked, in any role
 
 Every `tasks/main.yml` pulled in each section file via
@@ -188,7 +245,7 @@ while `xyph4r-adm` key-only access keeps working. What came up along the way:
   just SSH.
 - **OpenSCAP datastream/profile IDs drift between `scap-security-guide`
   releases.** Before trusting the defaults in
-  `inventory/group_vars/{rocky9,rocky10,debian12,ubuntu22,ubuntu26}.yml`
+  `inventory/group_vars/{rocky9,rocky10,centos10,debian12,debian13,ubuntu22,ubuntu26}.yml`
   (`scap_datastream_candidates`, `scap_profile_id`), run on a real target:
   ```
   ls /usr/share/xml/scap/ssg/content/
