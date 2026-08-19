@@ -1,0 +1,106 @@
+---
+# Installs the Wazuh agent and points it at wazuh_manager_address via the
+# WAZUH_MANAGER environment variable, which the official Wazuh package's
+# postinstall script reads to populate ossec.conf automatically - this is
+# Wazuh's own documented scripted-install method, not a hand-rolled config
+# file this repo would need to keep in sync with Wazuh's schema.
+#
+# VERIFY BEFORE RELYING ON THIS: repo URLs, GPG key URL, and package naming
+# below are accurate as of when this was written, but Wazuh versions/URLs
+# do change - cross-check against https://documentation.wazuh.com current
+# installation docs once you're ready to actually deploy agents, same as
+# every other externally-sourced install step in this repo (Netbird's
+# install script broke exactly this way once already - see TODO.md).
+#
+# The agent only needs OUTBOUND connectivity to the manager (ports
+# 1514/1515 by default) - every *_cis role's firewall already allows
+# outbound by default, so no inbound firewall changes are needed here for
+# the agent side. If/when you expose the manager's dashboard/API, route
+# that through cis_vpn_only_tcp_ports (see group_vars/all.yml) rather than
+# publicly - that was the original motivating use case for that variable.
+
+- name: "Add the Wazuh RPM GPG key (RedHat family)"
+  ansible.builtin.rpm_key:
+    key: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+    state: present
+  when: wazuh_agent_enabled | bool and ansible_facts['os_family'] == "RedHat"
+  tags: [wazuh_agent]
+
+- name: "Add the Wazuh yum repo (RedHat family)"
+  ansible.builtin.yum_repository:
+    name: wazuh
+    description: Wazuh repository
+    baseurl: https://packages.wazuh.com/4.x/yum/
+    gpgcheck: true
+    gpgkey: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+    enabled: true
+    protect: true
+  when: wazuh_agent_enabled | bool and ansible_facts['os_family'] == "RedHat"
+  tags: [wazuh_agent]
+
+- name: "Install the Wazuh agent (RedHat family)"
+  ansible.builtin.dnf:
+    name: "{{ 'wazuh-agent-' + wazuh_agent_version if wazuh_agent_version | length > 0 else 'wazuh-agent' }}"
+    state: present
+  environment:
+    WAZUH_MANAGER: "{{ wazuh_manager_address }}"
+    WAZUH_REGISTRATION_PASSWORD: "{{ wazuh_agent_registration_password }}"
+  when: wazuh_agent_enabled | bool and ansible_facts['os_family'] == "RedHat"
+  no_log: "{{ wazuh_agent_registration_password | length > 0 }}"
+  tags: [wazuh_agent]
+
+- name: "Download the Wazuh apt GPG key (Debian family)"
+  ansible.builtin.get_url:
+    url: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+    dest: /tmp/wazuh-gpg-key.asc
+    mode: "0644"
+  when: wazuh_agent_enabled | bool and ansible_facts['os_family'] == "Debian"
+  tags: [wazuh_agent]
+
+- name: "Dearmor the Wazuh GPG key into a keyring (Debian family)"
+  # apt-key/ansible.builtin.apt_key is deprecated and non-functional on
+  # newer Debian/Ubuntu - this is the current supported signed-by approach.
+  ansible.builtin.shell: gpg --dearmor < /tmp/wazuh-gpg-key.asc > /usr/share/keyrings/wazuh.gpg
+  args:
+    creates: /usr/share/keyrings/wazuh.gpg
+  when: wazuh_agent_enabled | bool and ansible_facts['os_family'] == "Debian"
+  tags: [wazuh_agent]
+
+- name: "Add the Wazuh apt repo (Debian family, signed-by keyring)"
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main"
+    filename: wazuh
+    state: present
+  when: wazuh_agent_enabled | bool and ansible_facts['os_family'] == "Debian"
+  tags: [wazuh_agent]
+
+- name: "Install the Wazuh agent (Debian family)"
+  ansible.builtin.apt:
+    name: "{{ 'wazuh-agent=' + wazuh_agent_version if wazuh_agent_version | length > 0 else 'wazuh-agent' }}"
+    state: present
+    update_cache: true
+  environment:
+    WAZUH_MANAGER: "{{ wazuh_manager_address }}"
+    WAZUH_REGISTRATION_PASSWORD: "{{ wazuh_agent_registration_password }}"
+  when: wazuh_agent_enabled | bool and ansible_facts['os_family'] == "Debian"
+  no_log: "{{ wazuh_agent_registration_password | length > 0 }}"
+  tags: [wazuh_agent]
+
+- name: "Ensure the Wazuh agent service is enabled and running"
+  ansible.builtin.systemd:
+    name: wazuh-agent
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: wazuh_agent_enabled | bool
+  tags: [wazuh_agent]
+
+- name: "Warn if wazuh_agent_enabled but the manager address is still a placeholder"
+  ansible.builtin.debug:
+    msg: >
+      wazuh_agent_enabled is true but wazuh_manager_address still looks like
+      the placeholder value - set it to your real Wazuh manager's
+      address/IP (ideally reachable only over the Netbird mesh, not exposed
+      publicly - see cis_vpn_only_tcp_ports) before relying on this.
+  when: wazuh_agent_enabled | bool and 'CHANGE_ME' in wazuh_manager_address
+  tags: [wazuh_agent]
