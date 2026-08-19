@@ -57,8 +57,10 @@ ansible-playbook -i inventory/hosts.ini site.yml --limit <os_group> --check --di
 # ============================================================================
 # Disables root SSH login + password auth, locks down the firewall, enables
 # auditd/AIDE/rsyslog, hardens sshd/sudo/PAM, sets file/mount permissions,
-# etc. Keep this SSH session open until step 5b passes - don't disconnect
-# blind on a misconfigured box.
+# etc. Also configures unattended security updates here (auto_updates_enabled
+# defaults true - no separate step needed, unlike netbird/fail2ban/wazuh
+# below which are all opt-in). Keep this SSH session open until step 5b
+# passes - don't disconnect blind on a misconfigured box.
 ansible-playbook -i inventory/hosts.ini site.yml --limit <os_group>
 
 # 5b. From a NEW terminal - confirm the hardening actually took effect:
@@ -72,6 +74,12 @@ cd ../scap
 ansible-playbook -i ../ansible/inventory/hosts.ini playbooks/scap_scan.yml --limit <os_group>
 # Reports land in reports/<hostname>/ (gitignored)
 cd ../ansible
+
+# For ongoing drift detection (not just a one-off before/after), use the
+# scan-only wrapper instead - same scan, but meant to be re-run periodically
+# (manually, or wired into your own crontab - see the script's own output
+# for an example; no dedicated always-on control node is assumed here):
+../ci/recurring-scap-scan.sh <os_group>
 
 # ============================================================================
 # 7. (Optional) Join the private Netbird network
@@ -105,7 +113,18 @@ ansible-playbook -i inventory/hosts.ini site.yml --tags fail2ban --limit <os_gro
   -e "fail2ban_enabled=true"
 
 # ============================================================================
-# 9. Add application firewall rules (a web server, an API, etc.)
+# 9. (Optional, placeholder-driven) Wazuh agent
+# ============================================================================
+# Only usable once you have a real Wazuh manager running - fill in
+# wazuh_manager_address in group_vars/all.yml first (not secret, safe to
+# commit), then:
+ansible-playbook -i inventory/hosts.ini site.yml --tags wazuh_agent --limit <os_group> \
+  -e "wazuh_agent_enabled=true wazuh_agent_registration_password=<pw>"
+# Verify against Wazuh's current install docs before relying on this - see
+# TODO.md "ACTION NEEDED - Wazuh agent role is placeholder-only".
+
+# ============================================================================
+# 10. Add application firewall rules (a web server, an API, etc.)
 # ============================================================================
 # Edit inventory/group_vars/<os_group>.yml, add the port(s):
 #   <os_group>cis_extra_allowed_tcp_ports: [80, 443]
@@ -113,7 +132,7 @@ ansible-playbook -i inventory/hosts.ini site.yml --tags fail2ban --limit <os_gro
 ansible-playbook -i inventory/hosts.ini site.yml --tags cis_3.4 --limit <os_group>
 
 # ============================================================================
-# 10. Reboot to finish activating /tmp hardening
+# 11. Reboot to finish activating /tmp hardening
 # ============================================================================
 # /dev/shm hardening (nodev,nosuid,noexec) applies immediately during step 5;
 # /tmp (via systemd tmp.mount) only takes effect after a reboot - a live
@@ -122,7 +141,7 @@ ansible-playbook -i inventory/hosts.ini site.yml --tags cis_3.4 --limit <os_grou
 ssh <cis_admin_username>@<host_or_ip> "sudo reboot"
 
 # ============================================================================
-# 11. Re-running later (config drift, new controls, routine compliance)
+# 12. Re-running later (config drift, new controls, routine compliance)
 # ============================================================================
 ansible-playbook -i inventory/hosts.ini site.yml --limit <os_group> --check --diff  # review first
 ansible-playbook -i inventory/hosts.ini site.yml --limit <os_group>                 # apply

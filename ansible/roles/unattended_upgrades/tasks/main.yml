@@ -1,0 +1,16 @@
+---
+# Unattended SECURITY-ONLY updates - not a CIS-numbered control in most
+# benchmarks (some argue against fully automated production patching), but
+# patching cadence matters as much as initial hardening. Default enabled;
+# set auto_updates_enabled: false per-host/group if a box needs manual
+# change control instead.
+
+- name: "Configure unattended security updates (dnf-automatic)"
+  ansible.builtin.import_tasks: redhat.yml
+  when: auto_updates_enabled | bool and ansible_facts['os_family'] == "RedHat"
+  tags: [auto_updates]
+
+- name: "Configure unattended security updates (unattended-upgrades)"
+  ansible.builtin.import_tasks: debian.yml
+  when: auto_updates_enabled | bool and ansible_facts['os_family'] == "Debian"
+  tags: [auto_updates]

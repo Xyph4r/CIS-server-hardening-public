@@ -157,3 +157,25 @@ cis_section_network: true
 cis_section_logging_auditing: true
 cis_section_access_authentication: true
 cis_section_system_maintenance: true
+
+# --- Unattended security updates (see ansible/roles/unattended_upgrades) ---
+# On by default (unlike netbird/fail2ban) - patching cadence matters as much
+# as initial hardening. Set false per-host/group if a box needs manual
+# change control instead. Reboots automatically when an update actually
+# requires one, at a fixed daily time rather than immediately.
+auto_updates_enabled: true
+auto_updates_reboot: true
+auto_updates_reboot_time: "03:00"
+auto_updates_email: ""   # optional; blank = no email reporting configured
+
+# --- Wazuh agent (see ansible/roles/wazuh_agent) ---
+# Off by default and placeholder-driven - the manager isn't set up yet.
+# Once it is: set wazuh_manager_address for real here (not secret, safe to
+# commit), pass wazuh_agent_registration_password via --extra-vars/vault
+# (never commit a real one), then run:
+#   ansible-playbook -i inventory/hosts.ini site.yml --tags wazuh_agent \
+#     -e "wazuh_agent_enabled=true wazuh_agent_registration_password=<pw>"
+wazuh_agent_enabled: false
+wazuh_manager_address: "CHANGE_ME.wazuh-manager.example"
+wazuh_agent_registration_password: ""
+wazuh_agent_version: ""

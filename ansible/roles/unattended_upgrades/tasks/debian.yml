@@ -1,0 +1,40 @@
+---
+# unattended-upgrades: security-only auto-install (Debian/Ubuntu family).
+# Automatic-Reboot-Time is unattended-upgrades' own native scheduled-reboot
+# feature, so no separate timer/script is needed here (unlike RedHat family).
+
+- name: "Ensure unattended-upgrades is installed"
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: present
+  tags: [auto_updates]
+
+- name: "Enable periodic apt update + unattended upgrade"
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [auto_updates]
+
+- name: "Configure unattended-upgrades (security updates only)"
+  ansible.builtin.template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [auto_updates]
+
+- name: "Ensure apt-daily and apt-daily-upgrade timers are enabled and running"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  tags: [auto_updates]

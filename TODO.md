@@ -1,5 +1,48 @@
 # TODO / before you trust this against real servers
 
+## ACTION NEEDED - Wazuh agent role is placeholder-only
+
+`wazuh_agent_enabled: false` and `wazuh_manager_address` is a literal
+placeholder string (`CHANGE_ME.wazuh-manager.example`) - built ahead of the
+actual Wazuh manager being ready, per request. Once it's up:
+
+1. Set `wazuh_manager_address` for real in `group_vars/all.yml` (not
+   secret, safe to commit).
+2. Decide `wazuh_agent_version` - pin one once you've settled, to avoid an
+   unplanned agent upgrade diverging from the manager's version.
+3. Run with `-e "wazuh_agent_enabled=true wazuh_agent_registration_password=<pw>"`
+   (password via `--extra-vars`/vault, never committed - same pattern as
+   `netbird_setup_key`).
+4. **Verify the repo URLs/GPG key/package names in
+   `ansible/roles/wazuh_agent/tasks/main.yml` against Wazuh's current docs
+   first** - written from general knowledge of Wazuh's install method, not
+   tested against a real manager. Same "may have drifted" caveat that bit
+   the Netbird install script once already in this repo.
+5. Decide whether the manager's dashboard/API should sit behind
+   `cis_vpn_only_tcp_ports` (Netbird-only) rather than public - that was
+   the original motivating case for that variable.
+
+## New this pass: unattended updates, Wazuh agent scaffold, recurring scan script
+
+- **`unattended_upgrades` role** (on by default) - `dnf-automatic`
+  (Rocky/CentOS) / `unattended-upgrades` (Debian/Ubuntu), security-only,
+  plus an automatic reboot-when-needed at a fixed daily time
+  (`auto_updates_reboot_time`, default `03:00`). RedHat side has no native
+  scheduled-reboot feature (unlike unattended-upgrades), so it's a small
+  systemd timer + `needs-restarting -r` check, deliberately pinned to fixed
+  non-randomized times (update timer at 02:00, reboot-check timer an hour
+  later) to keep the ordering deterministic rather than relying on
+  overlapping randomized delays. **Not yet verified on a real box** -
+  applied nowhere live yet in this conversation.
+- **`wazuh_agent` role** - see "ACTION NEEDED" above.
+- **`ci/recurring-scap-scan.sh`** - scan-only (no remediation) wrapper
+  around `scap/playbooks/scap_scan.yml`, for periodic drift detection.
+  Deliberately NOT wired to cron/systemd on any host - no dedicated
+  always-on control node in this setup, so scheduling is left to the user
+  (their own crontab, run manually, etc.) rather than assuming
+  infrastructure that doesn't exist.
+- Explicitly out of scope per request: CIS Level 2 controls.
+
 ## Full repo audit (Rocky9/10 diff, bug sweep, doc accuracy)
 
 - **Rocky 9 vs Rocky 10: confirmed functionally identical** apart from

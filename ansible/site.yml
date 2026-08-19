@@ -70,3 +70,17 @@
   roles:
     - fail2ban
   tags: [fail2ban]
+
+- name: Configure unattended security updates (enabled by default, see group_vars/all.yml)
+  hosts: cis_servers
+  become: true
+  roles:
+    - unattended_upgrades
+  tags: [auto_updates]
+
+- name: Install the Wazuh agent (opt-in and placeholder-driven, see group_vars/all.yml)
+  hosts: cis_servers
+  become: true
+  roles:
+    - wazuh_agent
+  tags: [wazuh_agent]

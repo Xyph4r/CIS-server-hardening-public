@@ -26,7 +26,7 @@ the closest role, rename, and adjust deltas. The official CIS Benchmark PDFs
 are kept outside this repo (not automated content, and CIS's license terms
 don't clearly permit redistribution) — see `TODO.md`.
 
-Three roles run outside the per-OS `*_cis` roles, against every host:
+Five roles run outside the per-OS `*_cis` roles, against every host:
 
 - **`ssh_access`** — creates the admin account (`cis_admin_username`, default
   `ops`) and deploys the team's SSH public keys (`cis_authorized_keys`) to
@@ -39,6 +39,15 @@ Three roles run outside the per-OS `*_cis` roles, against every host:
   "fail2ban" below.
 - **`netbird`** — opt-in (`netbird_enabled: false` by default) install/join
   for a private Netbird mesh network. See "Private networking" below.
+- **`unattended_upgrades`** — **on by default** (`auto_updates_enabled: true`),
+  unlike the others. Security-only automatic patching (`dnf-automatic` /
+  `unattended-upgrades`) plus an automatic reboot when an applied update
+  actually requires one, at a fixed daily time. See "Unattended security
+  updates" below.
+- **`wazuh_agent`** — opt-in and placeholder-driven
+  (`wazuh_agent_enabled: false`, `wazuh_manager_address` is a placeholder
+  string). Installs the Wazuh agent and points it at your manager once you
+  fill in real values. See "Wazuh agent" below.
 
 ## Repository layout
 
@@ -55,11 +64,14 @@ ansible/            Hardening playbooks + roles (the remediation side)
     ubuntu26_cis/
     fail2ban/         opt-in SSH brute-force ban
     netbird/          opt-in private-network join
+    unattended_upgrades/  on by default, security-only auto-patching
+    wazuh_agent/          opt-in, placeholder-driven
 scap/                OpenSCAP scanning + SCAP-generated remediation (the assessment side)
   roles/openscap_scan/
   playbooks/
 mappings/            CIS control -> Ansible task -> SCAP rule cross-reference
-ci/                  scan -> remediate -> re-scan pipeline glue
+ci/                  scan -> remediate -> re-scan pipeline glue, plus a
+                     scan-only script for periodic drift checks
 ```
 
 One repo, not several — see rationale in `mappings/README.md`. Assessment
@@ -173,6 +185,66 @@ caveat as everything else version-dependent in this repo.
 ```bash
 ansible-playbook -i inventory/hosts.ini site.yml --tags fail2ban
 ```
+
+## Unattended security updates — on by default, not a CIS-numbered control
+
+Security-only automatic patching: `dnf-automatic` on Rocky/CentOS,
+`unattended-upgrades` on Debian/Ubuntu. Unlike `fail2ban`/`netbird`, this
+defaults **on** (`auto_updates_enabled: true`) — patching cadence matters as
+much as initial hardening, and a security-only (not "everything") policy
+keeps the risk of an update breaking something reasonably low.
+
+Also reboots automatically when an applied update actually needs one (e.g.
+a new kernel) — `auto_updates_reboot: true` by default, at a fixed daily
+time (`auto_updates_reboot_time`, default `03:00`) rather than immediately,
+so it never reboots mid-task. On Debian/Ubuntu this uses
+`unattended-upgrades`' own native scheduled-reboot feature; on
+Rocky/CentOS (which has no equivalent built in) it's a small systemd timer
+that checks `needs-restarting -r` before rebooting, pinned to run an hour
+after the (also-pinned, non-randomized) update timer.
+
+Set `auto_updates_enabled: false` per-host/group for any box that needs
+manual change control instead, or `auto_updates_reboot: false` to apply
+updates but never reboot automatically:
+
+```bash
+ansible-playbook -i inventory/hosts.ini site.yml --tags auto_updates
+```
+
+## Wazuh agent — opt-in, placeholder-driven
+
+Installs the Wazuh agent via Wazuh's official repo and points it at your
+manager through the `WAZUH_MANAGER` environment variable (Wazuh's own
+documented scripted-install method — the package's postinstall script
+populates `ossec.conf` itself, so this repo doesn't need to hand-maintain
+that config's schema).
+
+Off by default and the manager address is a literal placeholder
+(`wazuh_manager_address: "CHANGE_ME.wazuh-manager.example"`) until you've
+actually got a Wazuh manager running. Once you do:
+
+```yaml
+# group_vars/all.yml - address is not secret, safe to commit
+wazuh_manager_address: "wazuh.4x-labs.com"   # or an internal/Netbird-only address
+```
+
+```bash
+ansible-playbook -i inventory/hosts.ini site.yml --tags wazuh_agent \
+  -e "wazuh_agent_enabled=true wazuh_agent_registration_password=<pw>"
+```
+
+The agent only needs outbound connectivity (ports 1514/1515 by default),
+which every `*_cis` role's firewall already allows — no inbound rule
+changes needed for the agent side. If/when you expose the manager's own
+dashboard/API, route that through `cis_vpn_only_tcp_ports` rather than
+publicly — that was the original motivating case for that variable.
+
+**Verify before relying on this**: repo URLs, GPG key location, and package
+naming in `ansible/roles/wazuh_agent/tasks/main.yml` are accurate as of
+when this was written, but Wazuh versions/URLs do change — cross-check
+against [Wazuh's current installation docs](https://documentation.wazuh.com)
+once you're ready to deploy agents for real, same caveat as every other
+externally-sourced install step in this repo.
 
 ## Private networking (Netbird) — scaffolding, not full architecture
 
