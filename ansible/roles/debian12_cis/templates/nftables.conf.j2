@@ -15,6 +15,11 @@ table inet filter {
     ip protocol icmp accept
     ip6 nexthdr icmpv6 accept
 
+{% if netbird_enabled and cis_vpn_trust_interface and cis_vpn_interface in ansible_facts['interfaces'] %}
+    # VPN traffic is already mesh-authenticated by Netbird - trust the whole interface.
+    iifname "{{ cis_vpn_interface }}" accept
+{% endif %}
+
     tcp dport {{ cis_ssh_port }} accept
 {% for port in debian12cis_extra_allowed_tcp_ports %}
     tcp dport {{ port }} accept

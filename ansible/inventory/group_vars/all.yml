@@ -74,14 +74,31 @@ cis_authorized_keys:
 # (via --extra-vars, ansible-vault, or environment, NEVER committed) to join.
 netbird_enabled: false
 netbird_setup_key: ""          # secret - do not put a real value in group_vars
-netbird_management_url: ""     # blank = Netbird's default SaaS control plane; set for self-hosted
+# Self-hosted at netbird.4x-labs.com (hermes-nue/rocky10) - not secret, safe
+# to commit, applies to every future client automatically. Change back to ""
+# if you ever move to Netbird's SaaS control plane instead.
+netbird_management_url: "https://netbird.4x-labs.com"
 
 # Firewall interface Netbird creates (default on Linux clients is wt0).
 cis_vpn_interface: wt0
+
+# Trust ALL traffic arriving on the Netbird interface (firewalld "trusted"
+# zone / nftables blanket iifname accept / "ufw allow in on <iface>").
+# Recommended default for a private mesh: anything reaching this host over
+# wt0 already passed Netbird's own peer authentication, so there's little
+# point re-allowlisting individual ports/protocols on top of that - and
+# without this, basic things like ping/SSH over the mesh don't work at all
+# (the interface exists but sits in whatever the OS's default firewall zone
+# is, which typically blocks everything not explicitly allowed).
+# Only takes effect when netbird_enabled is true.
+cis_vpn_trust_interface: true
+
 # TCP ports that should be reachable ONLY via the VPN interface, never
-# publicly - e.g. a Wazuh dashboard/API port once it's deployed. Wired into
-# every *_cis role's firewall config (firewalld zone / nftables iifname /
-# ufw "allow in on <iface>").
+# publicly - e.g. a Wazuh dashboard/API port once it's deployed, for the
+# case where you want an app port VPN-only WITHOUT fully trusting the
+# interface (cis_vpn_trust_interface: false). Wired into every *_cis role's
+# firewall config (firewalld zone / nftables iifname / ufw "allow in on
+# <iface>").
 cis_vpn_only_tcp_ports: []
 # Netbird typically does NOT need an inbound port opened publicly - peer
 # connections are established via STUN/ICE hole-punching with relay
@@ -96,13 +113,26 @@ cis_netbird_udp_port: 51820
 # that bans a source IP after repeated SSH auth failures. Useful given
 # key-only auth already makes brute-forcing futile (this just cuts the
 # noise), but has a real self-lockout risk if your own IP trips maxretry
-# and isn't in fail2ban_ignoreip. bantime is non-permanent (1h) so a
-# self-ban isn't catastrophic. Add your own IP(s)/CIDR before enabling:
+# and isn't in fail2ban_ignoreip.
+#
+# No static public IP? Don't put a public address here - it'll go stale the
+# next time your ISP reassigns you one, and silently stop protecting you.
+# Best fix: once Netbird is joined, use its stable overlay CIDR instead
+# (run `ip -4 addr show wt0` on the box; Netbird's default range is
+# 100.64.0.0/10 unless customized - verify against the real interface, not
+# this comment). A dynamic-DNS hostname also works here (fail2ban resolves
+# hostnames in ignoreip at jail start/reload - stale between reloads, but
+# better than nothing) if you want protection before Netbird is up.
 fail2ban_enabled: false
-fail2ban_ignoreip: []          # e.g. ["203.0.113.4/32"] - your known admin IP(s)
+fail2ban_ignoreip: []          # e.g. ["100.64.0.0/10"] once on Netbird, or a DDNS hostname
 fail2ban_bantime: 1h
 fail2ban_findtime: 10m
-fail2ban_maxretry: 5
+# Higher than fail2ban's usual default (5) specifically because there's no
+# IP exemption in place yet for most setups - a few of your own genuine
+# retries (wrong key offered first, a bad Ansible run reconnecting) shouldn't
+# tip this over. bantime staying short (above) is what keeps a false
+# positive here low-stakes rather than needing this to be perfectly tuned.
+fail2ban_maxretry: 10
 
 # auditd
 cis_audit_log_max_mb: 50

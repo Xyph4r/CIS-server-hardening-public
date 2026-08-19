@@ -23,7 +23,7 @@
     create_home: true
     state: present
     password: "{{ cis_admin_password_hash if cis_admin_password_hash | length > 0 else omit }}"
-  when: cis_create_admin_user
+  when: cis_create_admin_user | bool
   no_log: "{{ cis_admin_password_hash | length > 0 }}"
   tags: [ssh_access]
 
@@ -35,7 +35,7 @@
     group: root
     mode: "0440"
     validate: "visudo -cf %s"
-  when: cis_create_admin_user
+  when: cis_create_admin_user | bool
   tags: [ssh_access]
 
 - name: "Ensure {{ cis_ssh_admin_user }} has the approved SSH public keys"
@@ -44,5 +44,5 @@
     key: "{{ item }}"
     state: present
   loop: "{{ cis_authorized_keys }}"
-  when: cis_manage_authorized_keys and cis_authorized_keys | length > 0
+  when: cis_manage_authorized_keys | bool and cis_authorized_keys | length > 0
   tags: [ssh_access]

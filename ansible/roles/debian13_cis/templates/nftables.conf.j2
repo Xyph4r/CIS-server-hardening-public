@@ -1,0 +1,42 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible (debian13_cis role) - CIS 3.4 baseline firewall.
+# Default-deny INPUT, allow loopback/established/ICMP/SSH (+ extra ports).
+
+flush ruleset
+
+table inet filter {
+  chain input {
+    type filter hook input priority 0; policy drop;
+
+    iif "lo" accept
+    ct state established,related accept
+    ct state invalid drop
+
+    ip protocol icmp accept
+    ip6 nexthdr icmpv6 accept
+
+{% if netbird_enabled and cis_vpn_trust_interface and cis_vpn_interface in ansible_facts['interfaces'] %}
+    # VPN traffic is already mesh-authenticated by Netbird - trust the whole interface.
+    iifname "{{ cis_vpn_interface }}" accept
+{% endif %}
+
+    tcp dport {{ cis_ssh_port }} accept
+{% for port in debian13cis_extra_allowed_tcp_ports %}
+    tcp dport {{ port }} accept
+{% endfor %}
+{% if cis_netbird_expose_udp_port %}
+    udp dport {{ cis_netbird_udp_port }} accept
+{% endif %}
+{% for port in cis_vpn_only_tcp_ports %}
+    iifname "{{ cis_vpn_interface }}" tcp dport {{ port }} accept
+{% endfor %}
+  }
+
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+  }
+
+  chain output {
+    type filter hook output priority 0; policy accept;
+  }
+}

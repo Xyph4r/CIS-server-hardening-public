@@ -1,5 +1,47 @@
 # TODO / before you trust this against real servers
 
+## Findings from the second live run (aragon-hel, Debian 13)
+
+- **FIXED** - the `netbird` role's install task ran the downloaded installer
+  directly (`ansible.builtin.command: /tmp/netbird-install.sh`), which failed
+  with `Errno 8: Exec format error`. Root cause: the script served from
+  `pkgs.netbird.io/install.sh` (physk/netbird-installer) has no shebang
+  line - it's a real, valid 483-line script, just meant to be invoked via a
+  shell (`bash script.sh`), not exec'd directly. Fixed by changing the task
+  to `ansible.builtin.command: bash /tmp/netbird-install.sh`. This is exactly
+  the "Netbird changes their install flow" risk already flagged in this
+  role's comments - it broke loudly (task failure) rather than silently,
+  which is what that note was hoping for.
+- **FIXED** - every boolean opt-in flag (`netbird_enabled`, `fail2ban_enabled`,
+  `cis_create_admin_user`, `cis_manage_authorized_keys`,
+  `cis_netbird_expose_udp_port`, `cis_vpn_trust_interface`) was referenced
+  bare in `when:` clauses (e.g. `when: netbird_enabled`). This is exactly how
+  every doc in this repo tells you to set them via
+  `-e "netbird_enabled=true ..."` - and that's precisely the case that broke:
+  ansible-core 2.21's stricter conditional typing rejects the CLI's string
+  `"true"` being auto-coerced to boolean for a bare `when:`, failing with
+  "Conditionals must have a boolean result." Native YAML `true`/`false` in
+  group_vars files was never affected - only the documented `-e` override
+  path. Fixed by adding `| bool` after every one of these vars wherever used
+  in a `when:` (8 files: `netbird`, `ssh_access`, `fail2ban` roles, and the
+  section3_network.yml in all four firewalld/ufw *_cis roles). `| bool` is a
+  safe no-op on values that are already native booleans, so this doesn't
+  change behavior for YAML-set values - it only fixes the CLI-string case.
+- **Inventory gotcha (not a repo bug, but easy to hit again):** a new
+  `[<os>]` group added to `hosts.ini` must ALSO be added under
+  `[cis_servers:children]`, or `ssh_access`/`netbird`/`fail2ban` (which all
+  target `hosts: cis_servers`) silently skip that host with "no hosts
+  matched" while the OS-specific hardening play (which targets the group
+  directly) works fine - easy to miss since nothing errors, it just quietly
+  never creates the admin user. Bit us adding `debian13`/aragon-hel.
+- **SSH host-key gotcha:** Ansible keys host-key trust to whatever string is
+  used to connect - if `ansible_host=<ip>` is set (as it is for every host in
+  `hosts.ini`), Ansible connects by IP, so a known_hosts entry populated by
+  manually SSHing to the *hostname* doesn't cover it. `rocky10`/hermes-nue
+  happened to work first-try only because an earlier unrelated manual
+  `ssh root@<ip>` had already populated the IP-keyed entry. For any new host,
+  trust the IP directly: `ssh -o UserKnownHostsFile=~/.ssh/known_hosts root@<ip> exit`.
+
 ## Findings from the first live run (hermes-nue, Rocky 10)
 
 Full run against a real box, end to end: bootstrap → hardening → verified
@@ -25,6 +67,31 @@ while `xyph4r-adm` key-only access keeps working. What came up along the way:
   `ls /etc/yum.repos.d /etc/dnf/repos.d 2>/dev/null` and report back so 1.2.2
   can point at the real path - until then, GPG-check enforcement for repo
   files is a no-op on Rocky 10.
+- **FIXED** - joined Netbird manually on hermes-nue (SSO login, since that
+  flow needs an interactive browser and can't go through the unattended
+  `netbird up --setup-key` the role uses) and `ping`ing the peer's overlay
+  IP from the VPS timed out completely. Root cause: two compounding bugs.
+  (1) The firewalld/nftables/ufw "trust the Netbird interface" logic in
+  every `*_cis` role was gated behind `cis_vpn_only_tcp_ports | length > 0`,
+  which defaults empty, so it never ran for basic connectivity (ping/SSH
+  over the mesh) at all - only for the narrower "expose one specific app
+  port via VPN" case. (2) Even when populated, that logic lived in a play
+  that runs BEFORE the Netbird play in `site.yml`, so the `wt0` interface
+  wouldn't exist yet when the firewall task tried to reference it. Fixed by:
+  adding a new `cis_vpn_trust_interface: true` default that unconditionally
+  trusts the whole interface (firewalld "trusted" zone / nftables blanket
+  `iifname` accept / `ufw allow in on wt0`) whenever `netbird_enabled` is
+  true, decoupled from `cis_vpn_only_tcp_ports`; reordering `site.yml` so
+  the Netbird play runs before every `*_cis` play; and guarding every
+  interface-referencing firewall task with
+  `cis_vpn_interface in ansible_facts['interfaces']` so a host where the
+  interface genuinely doesn't exist yet fails to a clean skip instead of an
+  error. Also fixed the netbird role's "no setup key" warning to not fire
+  when the interface already exists (i.e. someone joined manually via SSO,
+  same as happened here) - re-run the full playbook against hermes-nue to
+  apply the firewall-trust rule via code instead of the manual
+  `firewall-cmd --zone=trusted --change-interface=wt0` used to unblock in
+  the moment.
 - **STILL OPEN (accepted, not a bug)** - `--check --diff` fails partway
   through section 3 (`firewalld` service task): package installs are
   simulated in check mode, so a following "manage this package's service"
@@ -93,15 +160,15 @@ while `xyph4r-adm` key-only access keeps working. What came up along the way:
   ls /usr/share/xml/scap/ssg/content/
   oscap info /usr/share/xml/scap/ssg/content/<file>
   ```
-- **Ubuntu 26.04 and Rocky 10 roles are provisional.** Both cloned from
-  their previous-version role (`ubuntu22_cis`, `rocky9_cis`) on the
-  assumption package/service names haven't changed - reasonable, but
-  unverified against a real box or an official CIS benchmark for either
-  (which may not even be published yet - CIS benchmarks typically lag OS
-  release by months). Their `scap_datastream_candidates` fall back to the
-  previous version's SSG content for the same reason. Verify both before
-  relying on them, especially Rocky 10 since a real host is already in
-  `hosts.ini`.
+- **Ubuntu 26.04, Rocky 10, and Debian 13 roles are all provisional.** Each
+  cloned from its previous-version role (`ubuntu22_cis`, `rocky9_cis`,
+  `debian12_cis`) on the assumption package/service names haven't changed -
+  reasonable, but unverified against a real box or an official CIS benchmark
+  for any of them (which may not even be published yet - CIS benchmarks
+  typically lag OS release by months). Their `scap_datastream_candidates`
+  fall back to the previous version's SSG content for the same reason.
+  Verify all three before relying on them, especially Rocky 10 since a real
+  host is already in `hosts.ini`.
 - **`cis_admin_username` is created with NO password (locked) by design** -
   key-only account. This is why `cis_admin_passwordless_sudo` defaults to
   `true`: a locked account has no password sudo could check, so pairing a

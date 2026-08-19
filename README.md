@@ -12,6 +12,7 @@ Server (not workstation/desktop) hardening for:
 | Rocky Linux 9     | `rocky9_cis`      | CIS Rocky Linux 9 Benchmark v2.0.0   |
 | Rocky Linux 10    | `rocky10_cis`     | CIS Rocky Linux 10 Benchmark (provisional — see `TODO.md`) |
 | Debian 12         | `debian12_cis`    | CIS Debian Linux 12 Benchmark        |
+| Debian 13         | `debian13_cis`    | CIS Debian Linux 13 Benchmark (provisional — see `TODO.md`) |
 | Ubuntu 22.04 LTS  | `ubuntu22_cis`    | CIS Ubuntu Linux 22.04 LTS Benchmark |
 | Ubuntu 26.04 LTS  | `ubuntu26_cis`    | CIS Ubuntu Linux 26.04 LTS Benchmark (provisional — see `TODO.md`) |
 
@@ -43,6 +44,7 @@ ansible/            Hardening playbooks + roles (the remediation side)
     rocky9_cis/
     rocky10_cis/
     debian12_cis/
+    debian13_cis/
     ubuntu22_cis/
     ubuntu26_cis/
     fail2ban/         opt-in SSH brute-force ban
@@ -133,17 +135,26 @@ noise of bots hitting any public IP on port 22, but genuinely optional:
 `PasswordAuthentication no` already makes brute-forcing this box futile on
 its own — fail2ban just cuts the log noise and connection churn.
 
-**Add your own IP(s) before enabling it**, or a burst of your own failed
-connections (e.g. an SSH agent offering the wrong key before the right one,
-repeated Ansible reconnects during a bad run) can trip `maxretry` and
-temporarily ban yourself:
+**No static public IP (common for home/office connections)?** Don't put a
+public address in `fail2ban_ignoreip` — it goes stale the next time your ISP
+reassigns you one, and silently stops protecting you. Best fix: once
+Netbird is joined, use its stable overlay CIDR instead (`ip -4 addr show
+wt0` on the box; verify the actual range, don't assume):
 
 ```yaml
 # group_vars/all.yml
 fail2ban_enabled: true
 fail2ban_ignoreip:
-  - "203.0.113.4/32"   # your actual admin IP(s)/CIDR
+  - "100.64.0.0/10"   # Netbird's overlay range - verify against the real interface
 ```
+
+Before Netbird is up, `fail2ban_maxretry` already defaults to 10 (higher
+than fail2ban's usual 5) specifically because there's no IP exemption
+available yet for most setups — a few genuine retries of your own (wrong
+key offered first, a bad Ansible run reconnecting) shouldn't tip it over. A
+dynamic-DNS hostname also works in `fail2ban_ignoreip` if you want
+IP-based protection sooner (fail2ban resolves hostnames there at jail
+start/reload — stale between reloads, but better than nothing).
 
 Bans are non-permanent (`fail2ban_bantime: 1h` by default) specifically so a
 self-ban isn't catastrophic — it expires on its own. The firewall action
@@ -165,12 +176,30 @@ What's in place now so that work isn't blocked later:
 
 - `ansible/roles/netbird/` installs the Netbird client and joins it to your
   mesh, entirely opt-in (`netbird_enabled: true` + `netbird_setup_key` passed
-  via `--extra-vars`/vault, never committed).
-- Every `*_cis` role's firewall config understands `cis_vpn_only_tcp_ports`
-  (`group_vars/all.yml`) — any TCP port listed there is opened **only** on
-  the Netbird interface (`cis_vpn_interface`, default `wt0`), never on the
-  public interface, regardless of firewall backend (firewalld zone /
-  nftables `iifname` match / `ufw allow in on <iface>`).
+  via `--extra-vars`/vault, never committed). SSO login (browser-based,
+  interactive) also works — run `netbird up` by hand once — but obviously
+  can't be driven by Ansible; the role's setup-key flow is for unattended
+  joins only.
+- **`cis_vpn_trust_interface: true` (default)** — every `*_cis` role's
+  firewall config trusts *all* traffic arriving on the Netbird interface
+  (firewalld "trusted" zone / nftables blanket `iifname` accept / `ufw allow
+  in on <iface>`). This is what makes basic things like `ping`/SSH over the
+  mesh actually work — without it, the interface exists but sits in
+  whatever the OS's default firewall zone is, which blocks everything not
+  explicitly allowed. Set `false` if you'd rather not trust the whole
+  interface and only expose specific ports via `cis_vpn_only_tcp_ports`
+  below.
+- `cis_vpn_only_tcp_ports` (`group_vars/all.yml`) — for the narrower case:
+  any TCP port listed there is opened **only** on the Netbird interface,
+  never on the public interface, useful if you want `cis_vpn_trust_interface:
+  false` but still need one specific service reachable over the mesh.
+
+**Ordering matters here**: `site.yml` runs the Netbird play *before* the
+`*_cis` hardening plays specifically so the `wt0` interface already exists
+by the time the firewall-trust tasks run — on a full run this is automatic.
+If you use `--tags netbird` in isolation to join a host for the first time,
+follow up with a full run (or `--tags netbird,cis_3.5`) so the firewall
+trust rule actually gets applied.
 
 So the intended pattern once you deploy something like Wazuh: don't expose
 its dashboard/API port publicly at all — add it to `cis_vpn_only_tcp_ports`
@@ -184,6 +213,6 @@ lock you out if Netbird isn't actually connected yet.
 
 - Ansible-core >= 2.15 on the control node
 - SSH access + a privilege-escalation-capable account on targets
-- Target OS: Rocky Linux 9/10, Debian 12, Ubuntu 22.04, or Ubuntu 26.04 (server installs)
+- Target OS: Rocky Linux 9/10, Debian 12/13, Ubuntu 22.04, or Ubuntu 26.04 (server installs)
 - `scap-security-guide` + `openscap-scanner` (the `openscap_scan` role
   installs these on the target automatically)

@@ -9,6 +9,19 @@
   roles:
     - ssh_access
 
+# Runs before the *_cis plays deliberately: those plays' firewall tasks
+# trust/allow the Netbird interface (cis_vpn_trust_interface /
+# cis_vpn_only_tcp_ports), which requires the interface to already exist.
+# On a host using --tags netbird in isolation to join for the first time,
+# follow up with a full run (or at least --tags netbird,cis_3.5) so the
+# firewall trust rule actually gets applied too.
+- name: Join servers to the private Netbird network (opt-in, see group_vars/all.yml)
+  hosts: cis_servers
+  become: true
+  roles:
+    - netbird
+  tags: [netbird]
+
 - name: Harden Rocky Linux 9 servers (CIS)
   hosts: rocky9
   become: true
@@ -26,6 +39,12 @@
   become: true
   roles:
     - debian12_cis
+
+- name: Harden Debian 13 servers (CIS)
+  hosts: debian13
+  become: true
+  roles:
+    - debian13_cis
 
 - name: Harden Ubuntu 22.04 servers (CIS)
   hosts: ubuntu22
@@ -45,10 +64,3 @@
   roles:
     - fail2ban
   tags: [fail2ban]
-
-- name: Join servers to the private Netbird network (opt-in, see group_vars/all.yml)
-  hosts: cis_servers
-  become: true
-  roles:
-    - netbird
-  tags: [netbird]

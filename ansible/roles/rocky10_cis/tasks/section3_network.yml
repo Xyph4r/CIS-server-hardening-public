@@ -59,16 +59,36 @@
   when: rocky10cis_configure_firewalld
   tags: [cis_3.4]
 
-# --- 3.5 VPN-only management ports (Netbird scaffolding) ---
+# --- 3.5 Netbird firewall integration ---
+# All tasks here require the wt0 interface to already exist - site.yml runs
+# the netbird play before this one specifically so that holds on a full
+# run. Using --tags netbird in isolation to join for the first time? Follow
+# up with a full run (or --tags netbird,cis_3.5) so these actually apply.
+
+- name: "3.5 | Trust the Netbird interface fully (VPN traffic is already mesh-authenticated)"
+  ansible.posix.firewalld:
+    zone: trusted
+    interface: "{{ cis_vpn_interface }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  when: >
+    rocky10cis_configure_firewalld and netbird_enabled | bool and cis_vpn_trust_interface | bool
+    and cis_vpn_interface in ansible_facts['interfaces']
+  tags: [cis_3.5]
+
 # cis_vpn_only_tcp_ports stays empty until you actually deploy something
-# that should be VPN-only (e.g. a Wazuh dashboard) - no-op by default.
+# that should be VPN-only (e.g. a Wazuh dashboard) without fully trusting
+# the interface - no-op by default.
 
 - name: "3.5 | Create firewalld zone for VPN-only management ports"
   ansible.posix.firewalld:
     zone: netbird-mgmt
     state: present
     permanent: true
-  when: rocky10cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+  when: >
+    rocky10cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+    and cis_vpn_interface in ansible_facts['interfaces']
   notify: reload firewalld
   tags: [cis_3.5]
 
@@ -78,7 +98,9 @@
     interface: "{{ cis_vpn_interface }}"
     permanent: true
     state: enabled
-  when: rocky10cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+  when: >
+    rocky10cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+    and cis_vpn_interface in ansible_facts['interfaces']
   notify: reload firewalld
   tags: [cis_3.5]
 
@@ -89,7 +111,9 @@
     permanent: true
     state: enabled
   loop: "{{ cis_vpn_only_tcp_ports }}"
-  when: rocky10cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+  when: >
+    rocky10cis_configure_firewalld and cis_vpn_only_tcp_ports | length > 0
+    and cis_vpn_interface in ansible_facts['interfaces']
   notify: reload firewalld
   tags: [cis_3.5]
 
@@ -99,6 +123,6 @@
     permanent: true
     state: enabled
     zone: public
-  when: rocky10cis_configure_firewalld and cis_netbird_expose_udp_port
+  when: rocky10cis_configure_firewalld and cis_netbird_expose_udp_port | bool
   notify: reload firewalld
   tags: [cis_3.5]

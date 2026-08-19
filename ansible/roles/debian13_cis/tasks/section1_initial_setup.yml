@@ -1,0 +1,164 @@
+---
+# CIS Debian 13 - Section 1: Initial Setup
+# Filesystem kernel modules, apt integrity, MAC (AppArmor), bootloader,
+# process hardening, warning banners.
+#
+# NOTE: cloned from debian12_cis - Debian 13 "Trixie" keeps the same
+# apt/AppArmor/systemd-timesyncd/AIDE tooling as 12, so this is expected to
+# be accurate, but hasn't been verified against a real 13.x box or an
+# official CIS Debian 13 benchmark yet. See TODO.md.
+
+# --- 1.1 Filesystem: disable unused/legacy filesystem kernel modules ---
+- name: "1.1 | Disable unused filesystem kernel modules"
+  ansible.builtin.copy:
+    dest: "/etc/modprobe.d/cis-disabled-filesystems.conf"
+    content: |
+      {% for fs in cis_disable_filesystems %}
+      install {{ fs }} /bin/true
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [cis_1.1]
+
+- name: "1.1 | Ensure disabled filesystems are not currently loaded"
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ cis_disable_filesystems }}"
+  failed_when: false
+  tags: [cis_1.1]
+
+# --- 1.2 apt integrity ---
+- name: "1.2.1 | Ensure APT does not allow unauthenticated packages"
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99cis-no-unauthenticated
+    content: |
+      APT::Get::AllowUnauthenticated "false";
+      Acquire::AllowInsecureRepositories "false";
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [cis_1.2.1]
+
+- name: "1.2.2 | Ensure gpgv is installed (repo signature verification)"
+  ansible.builtin.apt:
+    name: gpgv
+    state: present
+  tags: [cis_1.2.2]
+
+# --- 1.3 Mandatory Access Control: AppArmor ---
+- name: "1.3.1 | Ensure AppArmor is installed"
+  ansible.builtin.apt:
+    name:
+      - apparmor
+      - apparmor-utils
+    state: present
+  when: debian13cis_enforce_apparmor
+  tags: [cis_1.3.1]
+
+- name: "1.3.2 | Ensure AppArmor is not disabled in bootloader config"
+  ansible.builtin.replace:
+    path: /etc/default/grub
+    regexp: '\bapparmor=0\b'
+    replace: ''
+  when: debian13cis_enforce_apparmor
+  notify: update grub
+  tags: [cis_1.3.2]
+
+- name: "1.3.3 | Ensure AppArmor is enabled and running"
+  ansible.builtin.service:
+    name: apparmor
+    state: started
+    enabled: true
+  when: debian13cis_enforce_apparmor
+  tags: [cis_1.3.3]
+
+- name: "1.3.4 | Set all AppArmor profiles to enforce mode"
+  ansible.builtin.command: aa-enforce /etc/apparmor.d/*
+  when: debian13cis_enforce_apparmor
+  changed_when: true
+  failed_when: false
+  tags: [cis_1.3.4]
+
+# --- 1.5 Process hardening ---
+- name: "1.5.1 | Ensure ASLR is enabled"
+  ansible.posix.sysctl:
+    name: kernel.randomize_va_space
+    value: "2"
+    sysctl_set: true
+    state: present
+    reload: true
+  tags: [cis_1.5.1]
+
+- name: "1.5.2 | Ensure ptrace_scope is restricted"
+  ansible.posix.sysctl:
+    name: kernel.yama.ptrace_scope
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+  tags: [cis_1.5.2]
+
+- name: "1.5.3 | Ensure core dumps are restricted (limits.conf)"
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/cis-core-dumps.conf
+    content: "* hard core 0\n"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [cis_1.5.3]
+
+- name: "1.5.3 | Ensure core dumps are restricted (sysctl)"
+  ansible.posix.sysctl:
+    name: fs.suid_dumpable
+    value: "0"
+    sysctl_set: true
+    state: present
+    reload: true
+  tags: [cis_1.5.3]
+
+# --- 1.7 Warning banners ---
+- name: "1.7.1 | Set warning banner content (/etc/issue, /etc/issue.net, /etc/motd)"
+  ansible.builtin.copy:
+    dest: "{{ item }}"
+    content: "{{ cis_banner_text }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - /etc/issue
+    - /etc/issue.net
+    - /etc/motd
+  tags: [cis_1.7.1]
+
+# --- AIDE file integrity monitoring ---
+- name: "1.4 | Install AIDE"
+  ansible.builtin.apt:
+    name: aide
+    state: present
+  when: debian13cis_configure_aide
+  tags: [cis_1.4]
+
+- name: "1.4 | Check whether AIDE database already exists"
+  ansible.builtin.stat:
+    path: /var/lib/aide/aide.db
+  register: debian13cis_aide_db
+  when: debian13cis_configure_aide
+  tags: [cis_1.4]
+
+- name: "1.4 | Initialize AIDE database (first run only, async)"
+  ansible.builtin.command: aideinit -y -f
+  when: debian13cis_configure_aide and not debian13cis_aide_db.stat.exists
+  async: 3600
+  poll: 0
+  changed_when: true
+  tags: [cis_1.4]
+
+- name: "1.4 | Schedule daily AIDE integrity check"
+  ansible.builtin.cron:
+    name: "CIS - AIDE integrity check"
+    special_time: daily
+    job: "/usr/bin/aide.wrapper --check"
+  when: debian13cis_configure_aide
+  tags: [cis_1.4]
