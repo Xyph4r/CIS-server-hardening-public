@@ -1,0 +1,74 @@
+---
+# CIS CentOS Stream 10 - Section 2: Services
+# Disable unneeded server/client services, configure time sync, restrict at/cron.
+
+- name: "2.1 | Disable unneeded server services"
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - avahi-daemon
+    - cups
+    - dhcpd
+    - named
+    - vsftpd
+    - httpd
+    - dovecot
+    - smb
+    - squid
+    - snmpd
+    - telnet.socket
+    - rsyncd
+    - nfs-server
+    - rpcbind
+  failed_when: false
+  tags: [cis_2.1]
+
+- name: "2.2 | Remove unneeded client packages"
+  ansible.builtin.dnf:
+    name:
+      - telnet
+      - rsh
+      - ypbind
+      - tftp
+    state: absent
+  failed_when: false
+  tags: [cis_2.2]
+
+- name: "2.3 | Ensure time synchronization (chronyd) is installed"
+  ansible.builtin.dnf:
+    name: chrony
+    state: present
+  tags: [cis_2.3]
+
+- name: "2.3 | Ensure chronyd is enabled and running"
+  ansible.builtin.service:
+    name: chronyd
+    state: started
+    enabled: true
+  tags: [cis_2.3]
+
+- name: "2.4 | Restrict at/cron to authorized users"
+  ansible.builtin.file:
+    path: /etc/cron.deny
+    state: absent
+  tags: [cis_2.4]
+
+- name: "2.4 | Ensure cron.allow exists and is restricted to root"
+  ansible.builtin.copy:
+    dest: /etc/cron.allow
+    content: "root\n"
+    owner: root
+    group: root
+    mode: "0600"
+  tags: [cis_2.4]
+
+- name: "2.4 | Ensure at.allow exists and is restricted to root"
+  ansible.builtin.copy:
+    dest: /etc/at.allow
+    content: "root\n"
+    owner: root
+    group: root
+    mode: "0600"
+  tags: [cis_2.4]

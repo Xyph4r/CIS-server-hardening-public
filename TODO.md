@@ -1,5 +1,39 @@
 # TODO / before you trust this against real servers
 
+## FIXED - granular `--tags cis_X.Y` selection never actually worked, in any role
+
+Every `tasks/main.yml` pulled in each section file via
+`ansible.builtin.include_tasks`, tagged only with the coarse section tag
+(`tags: [cis_1, section1]` etc.). `include_tasks` is **dynamic** - Ansible
+decides whether to step into it using only the tags on the include
+statement itself, since it can't look inside a dynamic include before
+deciding to run it. Any finer tag inside the file (`cis_1.1.2`, `cis_5.2`,
+...) was invisible to `--tags` unless the coarse section tag also matched.
+Caught when `--tags cis_1.1.2` silently ran nothing at all (not even
+unrelated tasks in that file) despite the tag existing on the intended task.
+
+This means only whole-section tags (`cis_1`...`cis_6`), `netbird`/`fail2ban`/
+`ssh_access` (their own dedicated plays), or untagged full runs ever
+actually worked as documented. Every more specific `--tags cis_X.Y.Z`
+example anywhere in this repo's history (including several given during
+live troubleshooting sessions) silently did nothing.
+
+**Fixed** by switching every `ansible.builtin.include_tasks` to
+`ansible.builtin.import_tasks` across all six `*_cis` roles' `tasks/main.yml`.
+`import_tasks` is resolved statically at parse time, so `--tags` can see and
+match on the real inner task tags. Coarse section tags still work exactly
+as before (they're still applied to the import statement, which merges onto
+every task inside) - this only fixes the granular case. One minor behavior
+change: `when:` on the import line now gets ANDed onto every task inside
+individually rather than skipping the whole include as one unit, so a
+disabled section now shows one "skipping" line per task instead of one -
+cosmetic only, no functional difference.
+
+**Not yet re-verified**: re-run a `--tags cis_X.Y`-style selective command
+against a real host to confirm this actually fixes it end-to-end (the
+in-repo YAML validation only confirms the files still parse, not that
+Ansible's live tag-resolution behaves as expected).
+
 ## Findings from the second live run (aragon-hel, Debian 13)
 
 - **FIXED** - the `netbird` role's install task ran the downloaded installer
@@ -160,15 +194,19 @@ while `xyph4r-adm` key-only access keeps working. What came up along the way:
   ls /usr/share/xml/scap/ssg/content/
   oscap info /usr/share/xml/scap/ssg/content/<file>
   ```
-- **Ubuntu 26.04, Rocky 10, and Debian 13 roles are all provisional.** Each
-  cloned from its previous-version role (`ubuntu22_cis`, `rocky9_cis`,
-  `debian12_cis`) on the assumption package/service names haven't changed -
-  reasonable, but unverified against a real box or an official CIS benchmark
-  for any of them (which may not even be published yet - CIS benchmarks
-  typically lag OS release by months). Their `scap_datastream_candidates`
-  fall back to the previous version's SSG content for the same reason.
-  Verify all three before relying on them, especially Rocky 10 since a real
-  host is already in `hosts.ini`.
+- **Ubuntu 26.04, Rocky 10, Debian 13, and CentOS Stream 10 roles are all
+  provisional.** Each cloned from the closest existing role
+  (`ubuntu22_cis`, `rocky9_cis`, `debian12_cis`, and `centos10_cis` from
+  `rocky10_cis` specifically, since both are RHEL10-based and share the same
+  dnf/firewalld/SELinux/chrony/AIDE tooling) on the assumption
+  package/service names haven't changed - reasonable, but unverified against
+  a real box or an official CIS benchmark for any of them (which may not
+  even be published yet - CIS benchmarks typically lag OS release by
+  months; CentOS Stream also isn't guaranteed to get its own CIS benchmark
+  at all rather than relying on RHEL's). Their `scap_datastream_candidates`
+  fall back to the closest RHEL/previous-version SSG content for the same
+  reason. Verify all four before relying on them, especially Rocky 10 since
+  a real host is already in `hosts.ini`.
 - **`cis_admin_username` is created with NO password (locked) by design** -
   key-only account. This is why `cis_admin_passwordless_sudo` defaults to
   `true`: a locked account has no password sudo could check, so pairing a
@@ -194,13 +232,22 @@ while `xyph4r-adm` key-only access keeps working. What came up along the way:
   (1077 pages; the Recommendations section alone is ~1038 pages; the
   Appendix Summary Table spans ~23 pages, roughly 350-450 individual
   checklist items across Level 1/2 x Server/Workstation): `rocky10_cis`
-  currently implements **61 tasks total**. Confirmed-missing just from
-  spot-checking section 1.1: all filesystem *partition* hardening (separate
-  partitions + nodev/nosuid/noexec for /tmp, /dev/shm, /home, /var,
-  /var/tmp, /var/log, /var/log/audit - 28 checks, skipped because it's
-  genuinely risky to automate on a live disk) and 3 more disabled kernel
-  modules (overlay, firewire-core, usb-storage) beyond the 7 currently
-  covered. Assume every other role has comparable gaps until checked.
+  currently implements **61 tasks total** (now +8 for /tmp and /dev/shm
+  hardening, see below). Confirmed-missing just from spot-checking section
+  1.1: filesystem partition hardening for /home, /var, /var/tmp, /var/log,
+  /var/log/audit (separate partitions + nodev/nosuid/noexec - ~24 checks,
+  still skipped, genuinely risky to automate repartitioning a live disk with
+  existing data) and 3 more disabled kernel modules (overlay, firewire-core,
+  usb-storage) beyond the 7 currently covered. Assume every other role has
+  comparable gaps until checked.
+  - **UPDATE:** /tmp and /dev/shm (the two most commonly checked of the
+    filesystem-partition controls) ARE now implemented, added across all six
+    `*_cis` roles - see `cis_harden_tmp_partition`/`cis_harden_dev_shm` in
+    `group_vars/all.yml`. /tmp uses systemd's built-in `tmp.mount` unit
+    (hardened tmpfs) rather than resizing a real partition, sidestepping the
+    live-repartitioning risk - but this means it only takes effect after a
+    reboot, not immediately. /dev/shm is already tmpfs everywhere and gets
+    remounted immediately with the same options.
   Treat `mappings/*.csv` as the way to actually track this per control,
   section by section, against each OS's real PDF - that's real, standalone
   work, not something to hand-wave as "mostly done."

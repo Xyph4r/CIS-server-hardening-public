@@ -8,6 +8,15 @@ cis_org_name: "4x-Labs"
 cis_banner_text: |
   Authorized uses only. All activity may be monitored and reported.
 
+# --- Filesystem partition hardening (CIS 1.1.2.x) ---
+# /tmp and /dev/shm only - NOT the full CIS 1.1.2.x set (/home, /var,
+# /var/tmp, /var/log, /var/log/audit), which would require the target
+# already having those as separate partitions - still out of scope here,
+# see TODO.md "Known gaps".
+cis_harden_tmp_partition: true   # /tmp -> hardened tmpfs (systemd tmp.mount) - reboot required to activate
+cis_harden_dev_shm: true         # /dev/shm -> nodev,nosuid,noexec - applied immediately, no reboot needed
+cis_tmp_tmpfs_size: ""           # e.g. "2G" to cap /tmp's tmpfs size; blank = systemd default (~50% RAM)
+
 # Password policy (CIS 5.x-equivalent controls, applied where the OS supports it)
 cis_password_max_days: 365
 cis_password_min_days: 1

@@ -23,3 +23,6 @@ scap_profile_id: xccdf_org.ssgproject.content_profile_cis
 # fail2ban banaction matching this OS's firewall backend (nftables).
 # Verify against `ls /etc/fail2ban/action.d/` on the actual installed version.
 fail2ban_banaction: nftables-multiport
+
+# Public TCP ports besides SSH - add app ports here, e.g. [80, 443].
+debian13cis_extra_allowed_tcp_ports: []

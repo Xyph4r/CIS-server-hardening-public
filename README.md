@@ -3,6 +3,10 @@
 Ansible-based CIS Benchmark hardening for Linux servers, paired with
 OpenSCAP + `scap-security-guide` for compliance scanning and verification.
 
+See `USAGE.md` for a single, straight-through command walkthrough covering
+the whole lifecycle - bootstrap, hardening, OpenSCAP, Netbird, fail2ban,
+custom firewall rules, through to a fully hardened box.
+
 ## Scope
 
 Server (not workstation/desktop) hardening for:
@@ -11,6 +15,7 @@ Server (not workstation/desktop) hardening for:
 |-------------------|-------------------|--------------------------------------|
 | Rocky Linux 9     | `rocky9_cis`      | CIS Rocky Linux 9 Benchmark v2.0.0   |
 | Rocky Linux 10    | `rocky10_cis`     | CIS Rocky Linux 10 Benchmark (provisional — see `TODO.md`) |
+| CentOS Stream 10  | `centos10_cis`    | CIS CentOS Stream 10 Benchmark (provisional — see `TODO.md`) |
 | Debian 12         | `debian12_cis`    | CIS Debian Linux 12 Benchmark        |
 | Debian 13         | `debian13_cis`    | CIS Debian Linux 13 Benchmark (provisional — see `TODO.md`) |
 | Ubuntu 22.04 LTS  | `ubuntu22_cis`    | CIS Ubuntu Linux 22.04 LTS Benchmark |
@@ -43,6 +48,7 @@ ansible/            Hardening playbooks + roles (the remediation side)
     ssh_access/      admin user + key deployment, runs before everything else
     rocky9_cis/
     rocky10_cis/
+    centos10_cis/
     debian12_cis/
     debian13_cis/
     ubuntu22_cis/
@@ -213,6 +219,6 @@ lock you out if Netbird isn't actually connected yet.
 
 - Ansible-core >= 2.15 on the control node
 - SSH access + a privilege-escalation-capable account on targets
-- Target OS: Rocky Linux 9/10, Debian 12/13, Ubuntu 22.04, or Ubuntu 26.04 (server installs)
+- Target OS: Rocky Linux 9/10, CentOS Stream 10, Debian 12/13, Ubuntu 22.04, or Ubuntu 26.04 (server installs)
 - `scap-security-guide` + `openscap-scanner` (the `openscap_scan` role
   installs these on the target automatically)

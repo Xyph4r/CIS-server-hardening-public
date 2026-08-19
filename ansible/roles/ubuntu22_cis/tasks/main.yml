@@ -7,31 +7,31 @@
     fail_msg: "ubuntu22_cis role targets Ubuntu 22.04 only (found {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }})"
 
 - name: "CIS Section 1 - Initial setup, filesystem, MAC"
-  ansible.builtin.include_tasks: section1_initial_setup.yml
+  ansible.builtin.import_tasks: section1_initial_setup.yml
   when: cis_section_initial_setup | default(true) and ubuntu22cis_section1_filesystem_mac
   tags: [cis_1, section1]
 
 - name: "CIS Section 2 - Services"
-  ansible.builtin.include_tasks: section2_services.yml
+  ansible.builtin.import_tasks: section2_services.yml
   when: cis_section_services | default(true) and ubuntu22cis_section2_services
   tags: [cis_2, section2]
 
 - name: "CIS Section 3 - Network"
-  ansible.builtin.include_tasks: section3_network.yml
+  ansible.builtin.import_tasks: section3_network.yml
   when: cis_section_network | default(true) and ubuntu22cis_section3_network
   tags: [cis_3, section3]
 
 - name: "CIS Section 4 - Logging and auditing"
-  ansible.builtin.include_tasks: section4_logging_auditing.yml
+  ansible.builtin.import_tasks: section4_logging_auditing.yml
   when: cis_section_logging_auditing | default(true) and ubuntu22cis_section4_logging_auditing
   tags: [cis_4, section4]
 
 - name: "CIS Section 5 - Access, authentication, SSH"
-  ansible.builtin.include_tasks: section5_access_authentication.yml
+  ansible.builtin.import_tasks: section5_access_authentication.yml
   when: cis_section_access_authentication | default(true) and ubuntu22cis_section5_access_authentication
   tags: [cis_5, section5]
 
 - name: "CIS Section 6 - System file permissions and maintenance"
-  ansible.builtin.include_tasks: section6_system_maintenance.yml
+  ansible.builtin.import_tasks: section6_system_maintenance.yml
   when: cis_section_system_maintenance | default(true) and ubuntu22cis_section6_system_maintenance
   tags: [cis_6, section6]

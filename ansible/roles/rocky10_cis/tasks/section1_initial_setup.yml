@@ -29,6 +29,61 @@
   failed_when: false
   tags: [cis_1.1]
 
+# --- 1.1.2 Filesystem partitions: /tmp and /dev/shm hardening ---
+# Converts /tmp to a hardened tmpfs mount via systemd's built-in tmp.mount
+# unit rather than resizing/creating a real disk partition on a live disk,
+# which this repo deliberately does not automate (too risky to do blind on
+# a box that might already have data/layout assumptions - see TODO.md).
+# /dev/shm is already tmpfs by default on every supported OS here - this
+# just adds the missing mount options.
+#
+# /tmp: only takes effect after a reboot. A live remount would immediately
+# hide whatever's currently in /tmp from any process with an open file
+# handle there - waiting for a planned reboot is safer than doing that
+# mid-session. /dev/shm: remounted immediately - a live remount here is
+# well-established safe practice and nothing meaningful is expected to
+# persist there.
+
+- name: "1.1.2.1 | Ensure tmp.mount systemd override directory exists"
+  ansible.builtin.file:
+    path: /etc/systemd/system/tmp.mount.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: cis_harden_tmp_partition | bool
+  tags: [cis_1.1.2]
+
+- name: "1.1.2.1 | Harden /tmp via systemd tmp.mount override (nodev,nosuid,noexec)"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/tmp.mount.d/cis-hardening.conf
+    content: |
+      [Mount]
+      Options=mode=1777,strictatime,nodev,nosuid,noexec{{ (',size=' + cis_tmp_tmpfs_size) if cis_tmp_tmpfs_size | length > 0 else '' }}
+    owner: root
+    group: root
+    mode: "0644"
+  when: cis_harden_tmp_partition | bool
+  tags: [cis_1.1.2]
+
+- name: "1.1.2.1 | Enable tmp.mount (active after next reboot)"
+  ansible.builtin.systemd:
+    name: tmp.mount
+    enabled: true
+    daemon_reload: true
+  when: cis_harden_tmp_partition | bool
+  tags: [cis_1.1.2]
+
+- name: "1.1.2.2 | Harden /dev/shm (nodev,nosuid,noexec), applied immediately"
+  ansible.posix.mount:
+    path: /dev/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: "defaults,nodev,nosuid,noexec"
+    state: mounted
+  when: cis_harden_dev_shm | bool
+  tags: [cis_1.1.2]
+
 # --- 1.2 Package management / GPG integrity ---
 - name: "1.2.1 | Ensure GPG check is globally activated (dnf.conf)"
   ansible.builtin.lineinfile:

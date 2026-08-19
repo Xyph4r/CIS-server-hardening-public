@@ -34,6 +34,12 @@
   roles:
     - rocky10_cis
 
+- name: Harden CentOS Stream 10 servers (CIS)
+  hosts: centos10
+  become: true
+  roles:
+    - centos10_cis
+
 - name: Harden Debian 12 servers (CIS)
   hosts: debian12
   become: true
