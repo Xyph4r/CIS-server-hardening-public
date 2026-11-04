@@ -1,0 +1,15 @@
+---
+ubuntu22cis_section1_filesystem_mac: true
+ubuntu22cis_section2_services: true
+ubuntu22cis_section3_network: true
+ubuntu22cis_section4_logging_auditing: true
+ubuntu22cis_section5_access_authentication: true
+ubuntu22cis_section6_system_maintenance: true
+
+ubuntu22cis_set_bootloader_password: false
+ubuntu22cis_enforce_apparmor: true
+ubuntu22cis_configure_aide: true
+ubuntu22cis_configure_ufw: true
+
+# Extra TCP ports to allow through ufw besides SSH (e.g. [80, 443]).
+ubuntu22cis_extra_allowed_tcp_ports: []

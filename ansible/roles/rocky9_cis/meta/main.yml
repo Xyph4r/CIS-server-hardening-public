@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: rocky9_cis
+  description: CIS Rocky Linux 9 Benchmark (Level 1 Server) hardening
+  author: "{{ lookup('env', 'USER') }}"
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Rocky
+      versions: ["9"]
+  galaxy_tags:
+    - security
+    - hardening
+    - cis
+dependencies: []

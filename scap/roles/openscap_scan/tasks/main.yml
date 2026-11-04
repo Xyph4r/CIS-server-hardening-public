@@ -1,0 +1,100 @@
+---
+- name: Install OpenSCAP + SCAP Security Guide (RHEL family)
+  ansible.builtin.dnf:
+    name:
+      - openscap-scanner
+      - scap-security-guide
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags: [scap_install]
+
+- name: Install OpenSCAP + SCAP Security Guide (Debian family)
+  ansible.builtin.apt:
+    name:
+      - openscap-scanner
+      - scap-security-guide
+    state: present
+  when: ansible_os_family == "Debian"
+  tags: [scap_install]
+
+- name: Locate the SCAP datastream file for this OS
+  ansible.builtin.find:
+    paths: "{{ scap_content_dir }}"
+    patterns: "{{ scap_datastream_candidates }}"
+  register: scap_ds_found
+  tags: [scap_scan]
+
+- name: Fail with a clear message if no datastream file was found
+  ansible.builtin.fail:
+    msg: >
+      None of {{ scap_datastream_candidates }} found under {{ scap_content_dir }}.
+      Run `oscap-podman` or check the installed scap-security-guide version -
+      the datastream filename changes between releases; update
+      scap_datastream_candidates in inventory/group_vars accordingly.
+  when: scap_ds_found.matched == 0
+  tags: [scap_scan]
+
+- name: Set datastream path fact
+  ansible.builtin.set_fact:
+    scap_datastream_path: "{{ scap_ds_found.files[0].path }}"
+  tags: [scap_scan]
+
+- name: Ensure remote report directory exists
+  ansible.builtin.file:
+    path: "{{ scap_remote_report_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  tags: [scap_scan]
+
+- name: Set report timestamp fact
+  ansible.builtin.set_fact:
+    scap_run_ts: "{{ lookup('pipe', 'date +%Y%m%dT%H%M%SZ') }}"
+  tags: [scap_scan]
+
+- name: Run OpenSCAP scan against the CIS profile
+  ansible.builtin.command:
+    cmd: >
+      oscap xccdf eval
+      --profile {{ scap_profile_id }}
+      --results {{ scap_remote_report_dir }}/results-{{ scap_run_ts }}.xml
+      --report {{ scap_remote_report_dir }}/report-{{ scap_run_ts }}.html
+      {{ scap_datastream_path }}
+  register: scap_eval
+  # oscap exits 2 when the scan ran fine but some rules failed - that is a
+  # normal/expected outcome, not an Ansible task failure.
+  failed_when: scap_eval.rc not in [0, 2]
+  changed_when: true
+  tags: [scap_scan]
+
+- name: Report scan exit status
+  ansible.builtin.debug:
+    msg: >
+      oscap rc={{ scap_eval.rc }} (0 = fully compliant, 2 = ran ok with
+      failed rules, other = scan error). Full report:
+      {{ scap_remote_report_dir }}/report-{{ scap_run_ts }}.html
+  tags: [scap_scan]
+
+- name: Ensure local reports directory exists on control node
+  ansible.builtin.file:
+    path: "{{ scap_local_reports_dir }}/{{ inventory_hostname }}"
+    state: directory
+    mode: "0750"
+  delegate_to: localhost
+  become: false
+  tags: [scap_scan]
+
+- name: Fetch HTML report to control node
+  ansible.builtin.fetch:
+    src: "{{ scap_remote_report_dir }}/report-{{ scap_run_ts }}.html"
+    dest: "{{ scap_local_reports_dir }}/{{ inventory_hostname }}/report-{{ scap_run_ts }}.html"
+    flat: true
+  tags: [scap_scan]
+
+- name: Fetch XCCDF results XML to control node
+  ansible.builtin.fetch:
+    src: "{{ scap_remote_report_dir }}/results-{{ scap_run_ts }}.xml"
+    dest: "{{ scap_local_reports_dir }}/{{ inventory_hostname }}/results-{{ scap_run_ts }}.xml"
+    flat: true
+  tags: [scap_scan]

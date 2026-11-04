@@ -1,0 +1,16 @@
+---
+debian12cis_section1_filesystem_mac: true
+debian12cis_section2_services: true
+debian12cis_section3_network: true
+debian12cis_section4_logging_auditing: true
+debian12cis_section5_access_authentication: true
+debian12cis_section6_system_maintenance: true
+
+debian12cis_set_bootloader_password: false
+debian12cis_enforce_apparmor: true
+debian12cis_configure_aide: true
+debian12cis_configure_nftables: true
+
+# Baseline nftables policy: SSH plus anything in this list, everything else
+# on INPUT is dropped. Add app ports here (e.g. [80, 443]).
+debian12cis_extra_allowed_tcp_ports: []

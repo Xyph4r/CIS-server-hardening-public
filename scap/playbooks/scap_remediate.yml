@@ -1,0 +1,46 @@
+---
+# Scan, then have OpenSCAP generate an Ansible remediation playbook from the
+# failed rules, and fetch it to the control node for human review.
+#
+# This does NOT apply the generated remediation automatically - CIS/SCAP
+# auto-fix content can restart services, rewrite configs, or change
+# firewall/SSH settings, and blindly running it against a live server is how
+# you get an outage or a lockout. Review the fetched playbook, then run it
+# deliberately (or better: fold the specific fixes you agree with into the
+# ansible/roles/*_cis role instead, so they're reviewed and repeatable).
+#
+# Usage:
+#   cd scap
+#   ansible-playbook -i ../ansible/inventory/hosts.ini playbooks/scap_remediate.yml --limit rocky9
+
+- name: Scan and generate (but not apply) SCAP remediation content
+  hosts: cis_servers
+  become: true
+  roles:
+    - openscap_scan
+
+  post_tasks:
+    - name: Generate an Ansible remediation playbook from the scan results
+      ansible.builtin.command:
+        cmd: >
+          oscap xccdf generate fix
+          --fix-type ansible
+          --output {{ scap_remote_report_dir }}/remediation-{{ scap_run_ts }}.yml
+          {{ scap_remote_report_dir }}/results-{{ scap_run_ts }}.xml
+      changed_when: true
+      tags: [scap_remediate]
+
+    - name: Fetch generated remediation playbook for review
+      ansible.builtin.fetch:
+        src: "{{ scap_remote_report_dir }}/remediation-{{ scap_run_ts }}.yml"
+        dest: "{{ scap_local_reports_dir }}/{{ inventory_hostname }}/remediation-{{ scap_run_ts }}.yml"
+        flat: true
+      tags: [scap_remediate]
+
+    - name: Point at where to review the output
+      ansible.builtin.debug:
+        msg: >
+          Generated remediation for {{ inventory_hostname }} saved to
+          {{ scap_local_reports_dir }}/{{ inventory_hostname }}/remediation-{{ scap_run_ts }}.yml
+          - review before running it against anything.
+      tags: [scap_remediate]

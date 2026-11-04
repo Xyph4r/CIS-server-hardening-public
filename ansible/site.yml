@@ -1,0 +1,86 @@
+---
+# CIS Server Hardening - master playbook
+# Run with --check --diff against a non-production target first.
+# Selective runs: --tags cis_5,cis_5.2.10   or   --skip-tags ssh_hardening
+
+- name: Bootstrap SSH key access (runs before anything else touches sshd)
+  hosts: cis_servers
+  become: true
+  roles:
+    - ssh_access
+
+# Runs before the *_cis plays deliberately: those plays' firewall tasks
+# trust/allow the Netbird interface (cis_vpn_trust_interface /
+# cis_vpn_only_tcp_ports), which requires the interface to already exist.
+# On a host using --tags netbird in isolation to join for the first time,
+# follow up with a full run (or at least --tags netbird,cis_3.5) so the
+# firewall trust rule actually gets applied too.
+- name: Join servers to the private Netbird network (opt-in, see group_vars/all.yml)
+  hosts: cis_servers
+  become: true
+  roles:
+    - netbird
+  tags: [netbird]
+
+- name: Harden Rocky Linux 9 servers (CIS)
+  hosts: rocky9
+  become: true
+  roles:
+    - rocky9_cis
+
+- name: Harden Rocky Linux 10 servers (CIS)
+  hosts: rocky10
+  become: true
+  roles:
+    - rocky10_cis
+
+- name: Harden CentOS Stream 10 servers (CIS)
+  hosts: centos10
+  become: true
+  roles:
+    - centos10_cis
+
+- name: Harden Debian 12 servers (CIS)
+  hosts: debian12
+  become: true
+  roles:
+    - debian12_cis
+
+- name: Harden Debian 13 servers (CIS)
+  hosts: debian13
+  become: true
+  roles:
+    - debian13_cis
+
+- name: Harden Ubuntu 22.04 servers (CIS)
+  hosts: ubuntu22
+  become: true
+  roles:
+    - ubuntu22_cis
+
+- name: Harden Ubuntu 26.04 servers (CIS)
+  hosts: ubuntu26
+  become: true
+  roles:
+    - ubuntu26_cis
+
+- name: Install and configure fail2ban (opt-in, see group_vars/all.yml)
+  hosts: cis_servers
+  become: true
+  roles:
+    - fail2ban
+  tags: [fail2ban]
+
+- name: Configure unattended security updates (enabled by default, see group_vars/all.yml)
+  hosts: cis_servers
+  become: true
+  roles:
+    - unattended_upgrades
+  tags: [auto_updates]
+
+- name: Install the Wazuh agent (opt-in and placeholder-driven, see group_vars/all.yml)
+  hosts: cis_servers
+  become: true
+  roles:
+    - wazuh_agent
+  tags: [wazuh_agent]

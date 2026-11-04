@@ -1,0 +1,67 @@
+---
+# Installs the Netbird client and joins it to your private mesh network.
+# Entirely opt-in: everything below is gated on netbird_enabled, so running
+# site.yml with the default group_vars is a no-op for this role.
+#
+# Uses Netbird's official quick-install script rather than a hand-rolled
+# apt/dnf repo definition, since repo URLs/keys are more likely to go stale
+# in this file than the install endpoint Netbird documents. Verify against
+# https://docs.netbird.io if this ever stops working.
+
+- name: Check whether Netbird is already installed
+  ansible.builtin.stat:
+    path: /usr/bin/netbird
+  register: netbird_bin
+  when: netbird_enabled | bool
+  tags: [netbird]
+
+- name: Download the official Netbird install script
+  ansible.builtin.get_url:
+    url: https://pkgs.netbird.io/install.sh
+    dest: /tmp/netbird-install.sh
+    mode: "0755"
+  when: netbird_enabled | bool and not netbird_bin.stat.exists
+  tags: [netbird]
+
+- name: Run the Netbird install script
+  # The script (physk/netbird-installer, served from pkgs.netbird.io) has no
+  # shebang line - it's meant to be invoked via a shell, not exec'd directly.
+  # Executing it directly fails with "Errno 8: Exec format error".
+  ansible.builtin.command: bash /tmp/netbird-install.sh
+  when: netbird_enabled | bool and not netbird_bin.stat.exists
+  changed_when: true
+  tags: [netbird]
+
+- name: Ensure the netbird service is enabled and running
+  ansible.builtin.service:
+    name: netbird
+    state: started
+    enabled: true
+  when: netbird_enabled | bool
+  tags: [netbird]
+
+- name: Join the Netbird network
+  ansible.builtin.command: >
+    netbird up
+    --setup-key {{ netbird_setup_key }}
+    {{ '--management-url ' + netbird_management_url if netbird_management_url | length > 0 else '' }}
+  when: netbird_enabled | bool and netbird_setup_key | length > 0
+  register: netbird_up
+  changed_when: "'Connected' in netbird_up.stdout or 'Connected' in netbird_up.stderr"
+  failed_when: netbird_up.rc != 0
+  no_log: true   # the setup key must never land in ansible logs/output
+  tags: [netbird]
+
+- name: Warn if netbird_enabled but no setup key was supplied and no join has happened
+  ansible.builtin.debug:
+    msg: >
+      netbird_enabled is true but netbird_setup_key is empty - Netbird was
+      installed but never joined. Pass the key via --extra-vars or
+      ansible-vault, never commit it to group_vars. (If you joined manually
+      via SSO instead - that flow needs a human in a browser and can't be
+      automated by Ansible - this warning is expected and harmless once the
+      {{ cis_vpn_interface }} interface exists.)
+  when: >
+    netbird_enabled | bool and netbird_setup_key | length == 0
+    and cis_vpn_interface not in ansible_facts['interfaces']
+  tags: [netbird]

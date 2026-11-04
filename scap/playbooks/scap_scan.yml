@@ -1,0 +1,14 @@
+---
+# Assessment only - scans hosts against their CIS profile via OpenSCAP and
+# fetches an HTML report + XCCDF results.xml back to ./reports/<host>/.
+#
+# Usage:
+#   cd scap
+#   ansible-playbook -i ../ansible/inventory/hosts.ini playbooks/scap_scan.yml
+#   ansible-playbook -i ../ansible/inventory/hosts.ini playbooks/scap_scan.yml --limit rocky9
+
+- name: Scan servers against their CIS SCAP profile
+  hosts: cis_servers
+  become: true
+  roles:
+    - openscap_scan

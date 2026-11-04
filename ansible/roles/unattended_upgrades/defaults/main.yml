@@ -1,0 +1,11 @@
+---
+auto_updates_enabled: true
+# Reboot automatically when an applied update actually requires one (e.g. a
+# new kernel) - checked via `needs-restarting -r` on RedHat family, native
+# unattended-upgrades scheduling on Debian family. Runs at a fixed daily
+# time rather than immediately, so it doesn't reboot mid-task.
+auto_updates_reboot: true
+auto_updates_reboot_time: "03:00"
+# Optional email for update/reboot reports. Blank = no email reporting
+# configured (still logs to stdout/journal either way).
+auto_updates_email: ""

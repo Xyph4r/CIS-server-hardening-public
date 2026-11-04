@@ -1,0 +1,69 @@
+---
+# CIS Debian 13 - Section 2: Services
+
+- name: "2.1 | Disable unneeded server services"
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - avahi-daemon
+    - cups
+    - isc-dhcp-server
+    - bind9
+    - vsftpd
+    - apache2
+    - dovecot
+    - smbd
+    - squid
+    - snmpd
+    - rsync
+    - nfs-kernel-server
+    - rpcbind
+  failed_when: false
+  tags: [cis_2.1]
+
+- name: "2.2 | Remove unneeded client packages"
+  ansible.builtin.apt:
+    name:
+      - telnet
+      - rsh-client
+      - nis
+      - tftp
+    state: absent
+  failed_when: false
+  tags: [cis_2.2]
+
+- name: "2.3 | Ensure time synchronization (systemd-timesyncd) is enabled"
+  ansible.builtin.service:
+    name: systemd-timesyncd
+    state: started
+    enabled: true
+  tags: [cis_2.3]
+
+- name: "2.4 | Ensure cron.allow exists and is restricted to root"
+  ansible.builtin.copy:
+    dest: /etc/cron.allow
+    content: "root\n"
+    owner: root
+    group: root
+    mode: "0600"
+  tags: [cis_2.4]
+
+- name: "2.4 | Ensure at.allow exists and is restricted to root"
+  ansible.builtin.copy:
+    dest: /etc/at.allow
+    content: "root\n"
+    owner: root
+    group: root
+    mode: "0600"
+  tags: [cis_2.4]
+
+- name: "2.4 | Remove cron.deny / at.deny if present"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/cron.deny
+    - /etc/at.deny
+  tags: [cis_2.4]

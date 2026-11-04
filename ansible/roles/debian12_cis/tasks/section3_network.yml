@@ -1,0 +1,68 @@
+---
+# CIS Debian 12 - Section 3: Network
+# sysctl hardening + nftables baseline (default-deny INPUT, allow SSH).
+
+- name: "3.2 | Network sysctl hardening"
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop:
+    - { key: "net.ipv4.ip_forward", value: "0" }
+    - { key: "net.ipv4.conf.all.send_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.send_redirects", value: "0" }
+    - { key: "net.ipv4.conf.all.accept_source_route", value: "0" }
+    - { key: "net.ipv4.conf.default.accept_source_route", value: "0" }
+    - { key: "net.ipv4.conf.all.accept_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.accept_redirects", value: "0" }
+    - { key: "net.ipv4.conf.all.secure_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.secure_redirects", value: "0" }
+    - { key: "net.ipv4.conf.all.log_martians", value: "1" }
+    - { key: "net.ipv4.conf.default.log_martians", value: "1" }
+    - { key: "net.ipv4.icmp_echo_ignore_broadcasts", value: "1" }
+    - { key: "net.ipv4.icmp_ignore_bogus_error_responses", value: "1" }
+    - { key: "net.ipv4.conf.all.rp_filter", value: "1" }
+    - { key: "net.ipv4.conf.default.rp_filter", value: "1" }
+    - { key: "net.ipv4.tcp_syncookies", value: "1" }
+    - { key: "net.ipv6.conf.all.accept_ra", value: "0" }
+    - { key: "net.ipv6.conf.default.accept_ra", value: "0" }
+    - { key: "net.ipv6.conf.all.accept_redirects", value: "0" }
+    - { key: "net.ipv6.conf.default.accept_redirects", value: "0" }
+  tags: [cis_3.2]
+
+- name: "3.4 | Ensure nftables is installed"
+  ansible.builtin.apt:
+    name: nftables
+    state: present
+  when: debian12cis_configure_nftables | bool
+  tags: [cis_3.4]
+
+- name: "3.4 | Deploy baseline nftables ruleset (default-deny INPUT)"
+  ansible.builtin.template:
+    src: nftables.conf.j2
+    dest: /etc/nftables.conf
+    owner: root
+    group: root
+    mode: "0640"
+  when: debian12cis_configure_nftables | bool
+  notify: reload nftables
+  tags: [cis_3.4]
+
+- name: "3.4 | Ensure nftables is enabled and running"
+  ansible.builtin.service:
+    name: nftables
+    state: started
+    enabled: true
+  when: debian12cis_configure_nftables | bool
+  tags: [cis_3.4]
+
+- name: "3.4 | Ensure ufw is not simultaneously active with nftables"
+  ansible.builtin.service:
+    name: ufw
+    state: stopped
+    enabled: false
+  failed_when: false
+  when: debian12cis_configure_nftables | bool
+  tags: [cis_3.4]

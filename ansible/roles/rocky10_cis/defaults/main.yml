@@ -1,0 +1,17 @@
+---
+# Per-control on/off switches. Section-wide switches (cis_section_*) live in
+# inventory/group_vars/all.yml and gate these at a coarser level.
+
+rocky10cis_section1_filesystem_mac: true
+rocky10cis_section2_services: true
+rocky10cis_section3_network: true
+rocky10cis_section4_logging_auditing: true
+rocky10cis_section5_access_authentication: true
+rocky10cis_section6_system_maintenance: true
+
+# Individual controls some environments need to opt out of (e.g. bootloader
+# password breaks unattended PXE re-provisioning, so default it off).
+rocky10cis_set_bootloader_password: false
+rocky10cis_enforce_selinux: true
+rocky10cis_configure_aide: true
+rocky10cis_configure_firewalld: true

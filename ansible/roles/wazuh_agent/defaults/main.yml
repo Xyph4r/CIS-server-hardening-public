@@ -1,0 +1,14 @@
+---
+# Entirely opt-in and placeholder-driven. Fill in real values once your
+# Wazuh manager is actually up, then run with --tags wazuh_agent
+# (or -e wazuh_agent_enabled=true ... on the command line, same pattern as
+# netbird). Real values belong in group_vars/all.yml (address is not
+# secret) and via --extra-vars/ansible-vault for the registration password
+# (never commit a real one).
+wazuh_agent_enabled: false
+wazuh_manager_address: "CHANGE_ME.wazuh-manager.example"
+wazuh_agent_registration_password: ""
+# Blank = latest version in the Wazuh repo. Pin a specific version (e.g.
+# "4.9.0-1") once you've settled on one, to avoid an unplanned agent
+# upgrade diverging from your manager's version.
+wazuh_agent_version: ""

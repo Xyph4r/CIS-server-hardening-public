@@ -1,0 +1,21 @@
+---
+cis_firewall_service: nftables
+cis_mac_type: apparmor
+cis_disable_filesystems:
+  - cramfs
+  - freevxfs
+  - hfs
+  - hfsplus
+  - jffs2
+  - squashfs
+  - udf
+cis_time_sync_service: systemd-timesyncd
+
+# OpenSCAP - verify with: oscap info /usr/share/xml/scap/ssg/content/<file>
+scap_datastream_candidates:
+  - ssg-debian12-ds.xml
+scap_profile_id: xccdf_org.ssgproject.content_profile_cis
+
+# fail2ban banaction matching this OS's firewall backend (nftables).
+# Verify against `ls /etc/fail2ban/action.d/` on the actual installed version.
+fail2ban_banaction: nftables-multiport

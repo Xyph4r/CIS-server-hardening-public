@@ -1,0 +1,76 @@
+---
+# CIS Rocky Linux 10 - Section 6: System File Permissions & account maintenance
+
+- name: "6.1 | Ensure permissions on core account/auth files"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /etc/passwd,  owner: root, group: root, mode: "0644" }
+    - { path: /etc/passwd-, owner: root, group: root, mode: "0644" }
+    - { path: /etc/group,   owner: root, group: root, mode: "0644" }
+    - { path: /etc/group-,  owner: root, group: root, mode: "0644" }
+    - { path: /etc/shadow,  owner: root, group: root, mode: "0000" }
+    - { path: /etc/shadow-, owner: root, group: root, mode: "0000" }
+    - { path: /etc/gshadow,  owner: root, group: root, mode: "0000" }
+    - { path: /etc/gshadow-, owner: root, group: root, mode: "0000" }
+  tags: [cis_6.1]
+
+- name: "6.1 | Find world-writable files (audit only, does not modify)"
+  ansible.builtin.shell: >
+    set -o pipefail;
+    df --local -P | awk '{if (NR!=1) print $6}' |
+    xargs -I{} find {} -xdev -type f -perm -0002 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: rocky10cis_world_writable
+  changed_when: false
+  failed_when: false
+  tags: [cis_6.1, audit_only]
+
+- name: "6.1 | Report world-writable files found"
+  ansible.builtin.debug:
+    msg: "World-writable files: {{ rocky10cis_world_writable.stdout_lines }}"
+  when: rocky10cis_world_writable.stdout_lines | default([]) | length > 0
+  tags: [cis_6.1, audit_only]
+
+- name: "6.2 | Ensure no legacy '+' entries exist in /etc/passwd or /etc/group"
+  ansible.builtin.lineinfile:
+    path: "{{ item }}"
+    regexp: '^\+:'
+    state: absent
+  loop:
+    - /etc/passwd
+    - /etc/group
+  tags: [cis_6.2]
+
+- name: "6.2 | Ensure no duplicate UIDs exist (audit only)"
+  ansible.builtin.shell: >
+    set -o pipefail;
+    cut -d: -f3 /etc/passwd | sort | uniq -d
+  args:
+    executable: /bin/bash
+  register: rocky10cis_dup_uids
+  changed_when: false
+  failed_when: false
+  tags: [cis_6.2, audit_only]
+
+- name: "6.2 | Ensure all users' home directories exist and are 0750 or stricter"
+  ansible.builtin.shell: >
+    set -o pipefail;
+    awk -F: '($7 !~ /nologin|false/ && $3 >= 1000) {print $1":"$6}' /etc/passwd
+  args:
+    executable: /bin/bash
+  register: rocky10cis_user_homes
+  changed_when: false
+  tags: [cis_6.2]
+
+- name: "6.2 | Enforce home directory permissions (0750)"
+  ansible.builtin.file:
+    path: "{{ item.split(':')[1] }}"
+    mode: "0750"
+  loop: "{{ rocky10cis_user_homes.stdout_lines }}"
+  failed_when: false
+  tags: [cis_6.2]

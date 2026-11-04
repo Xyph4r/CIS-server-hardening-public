@@ -1,0 +1,183 @@
+---
+# Values shared across every CIS role regardless of OS.
+# Per-OS overrides live in group_vars/<group>.yml, filename MUST match the
+# inventory group name exactly (rocky9.yml/debian12.yml/ubuntu22.yml/ubuntu26.yml)
+# or Ansible silently won't load it.
+
+cis_org_name: "Example Org"
+cis_banner_text: |
+  Authorized uses only. All activity may be monitored and reported.
+
+# --- Filesystem partition hardening (CIS 1.1.2.x) ---
+# /tmp and /dev/shm only - NOT the full CIS 1.1.2.x set (/home, /var,
+# /var/tmp, /var/log, /var/log/audit), which would require the target
+# already having those as separate partitions - still out of scope here,
+# see TODO.md "Known gaps".
+cis_harden_tmp_partition: true   # /tmp -> hardened tmpfs (systemd tmp.mount) - reboot required to activate
+cis_harden_dev_shm: true         # /dev/shm -> nodev,nosuid,noexec - applied immediately, no reboot needed
+cis_tmp_tmpfs_size: ""           # e.g. "2G" to cap /tmp's tmpfs size; blank = systemd default (~50% RAM)
+
+# Password policy (CIS 5.x-equivalent controls, applied where the OS supports it)
+cis_password_max_days: 365
+cis_password_min_days: 1
+cis_password_warn_age: 7
+cis_password_min_length: 14
+
+# Account lockout (pam_faillock / pam_tally2 equivalent)
+cis_account_lockout_attempts: 5
+cis_account_lockout_interval_sec: 900
+cis_account_unlock_time_sec: 900
+
+# Idle session timeout (TMOUT), in seconds
+cis_shell_timeout_sec: 900
+
+# SSH hardening
+cis_ssh_port: 22
+cis_ssh_max_auth_tries: 4
+cis_ssh_client_alive_interval: 300
+cis_ssh_client_alive_count_max: 3
+cis_ssh_permit_root_login: "no"
+cis_ssh_allowed_groups: []   # e.g. ["sshusers"] — leave empty to skip AllowGroups
+
+# CIS 5.1 - key-only SSH access. Only flip this to "no" once you've confirmed
+# cis_authorized_keys below are actually deployed and working - the
+# ssh_access role runs before any *_cis role in site.yml specifically so
+# keys land before this takes effect, but verify with a --check run first.
+cis_ssh_password_auth: "no"
+
+# --- SSH access bootstrap (ssh_access role) ---
+# The account this repo creates/manages on every host - NOT the same as
+# ansible_user, which during first-ever bootstrap of a fresh box is "root"
+# (see hosts.example.ini header). Rename freely; "ops" is just a default.
+cis_create_admin_user: true
+cis_admin_username: "ops"
+
+# The account is created with NO password (locked - `passwd -S` shows L),
+# key-only by design. That means passwordless sudo is not just convenience
+# here, it's required: a locked account has no password sudo could check
+# against, so cis_admin_passwordless_sudo: false would make sudo
+# unconditionally fail for this user. Only set this false if you also set
+# cis_admin_password_hash below to give the account a real password.
+cis_admin_passwordless_sudo: true
+
+# Optional: give the account an actual password (e.g. for console/rescue
+# access, or to allow cis_admin_passwordless_sudo: false). Leave "" to keep
+# the account key-only/locked. Generate a hash with, e.g.:
+#   python3 -c 'import crypt,getpass; print(crypt.crypt(getpass.getpass(), crypt.mksalt(crypt.METHOD_SHA512)))'
+# Never put a real hash in a committed file - pass via ansible-vault or
+# --extra-vars instead, same as netbird_setup_key.
+cis_admin_password_hash: ""
+
+# Public keys only - these are meant to be distributed, safe to commit.
+# Deployed to cis_ssh_admin_user's (= cis_admin_username's) authorized_keys.
+cis_ssh_admin_user: "{{ cis_admin_username }}"
+cis_manage_authorized_keys: true
+cis_authorized_keys: []
+# Add your own public key(s) here before running, e.g.:
+#   cis_authorized_keys:
+#     - "ssh-ed25519 AAAA... you@workstation"
+#     - "sk-ssh-ed25519@openssh.com AAAA... you@hardware-key"
+# The ssh_access role refuses to run with an empty list while
+# cis_ssh_password_auth is "no", since that would lock you out.
+
+# --- Netbird / private-network scaffolding (see ansible/roles/netbird) ---
+# Off by default - flip netbird_enabled: true and supply netbird_setup_key
+# (via --extra-vars, ansible-vault, or environment, NEVER committed) to join.
+netbird_enabled: false
+netbird_setup_key: ""          # secret - do not put a real value in group_vars
+# Blank = Netbird's SaaS control plane. For a self-hosted management server
+# set it here, e.g. "https://netbird.example.com" - not secret, safe to
+# commit, applies to every client automatically.
+netbird_management_url: ""
+
+# Firewall interface Netbird creates (default on Linux clients is wt0).
+cis_vpn_interface: wt0
+
+# Trust ALL traffic arriving on the Netbird interface (firewalld "trusted"
+# zone / nftables blanket iifname accept / "ufw allow in on <iface>").
+# Recommended default for a private mesh: anything reaching this host over
+# wt0 already passed Netbird's own peer authentication, so there's little
+# point re-allowlisting individual ports/protocols on top of that - and
+# without this, basic things like ping/SSH over the mesh don't work at all
+# (the interface exists but sits in whatever the OS's default firewall zone
+# is, which typically blocks everything not explicitly allowed).
+# Only takes effect when netbird_enabled is true.
+cis_vpn_trust_interface: true
+
+# TCP ports that should be reachable ONLY via the VPN interface, never
+# publicly - e.g. a Wazuh dashboard/API port once it's deployed, for the
+# case where you want an app port VPN-only WITHOUT fully trusting the
+# interface (cis_vpn_trust_interface: false). Wired into every *_cis role's
+# firewall config (firewalld zone / nftables iifname / ufw "allow in on
+# <iface>").
+cis_vpn_only_tcp_ports: []
+# Netbird typically does NOT need an inbound port opened publicly - peer
+# connections are established via STUN/ICE hole-punching with relay
+# fallback, same model as Tailscale/WireGuard mesh VPNs generally. Only
+# flip this on if you've pinned a static WireGuard port for reliability
+# and confirmed (via current Netbird docs) that it needs to be reachable.
+cis_netbird_expose_udp_port: false
+cis_netbird_udp_port: 51820
+
+# --- fail2ban (see ansible/roles/fail2ban) ---
+# Off by default. Not a CIS Benchmark control - it's an operational add-on
+# that bans a source IP after repeated SSH auth failures. Useful given
+# key-only auth already makes brute-forcing futile (this just cuts the
+# noise), but has a real self-lockout risk if your own IP trips maxretry
+# and isn't in fail2ban_ignoreip.
+#
+# No static public IP? Don't put a public address here - it'll go stale the
+# next time your ISP reassigns you one, and silently stop protecting you.
+# Best fix: once Netbird is joined, use its stable overlay CIDR instead
+# (run `ip -4 addr show wt0` on the box; Netbird's default range is
+# 100.64.0.0/10 unless customized - verify against the real interface, not
+# this comment). A dynamic-DNS hostname also works here (fail2ban resolves
+# hostnames in ignoreip at jail start/reload - stale between reloads, but
+# better than nothing) if you want protection before Netbird is up.
+fail2ban_enabled: false
+fail2ban_ignoreip: []          # e.g. ["100.64.0.0/10"] once on Netbird, or a DDNS hostname
+fail2ban_bantime: 1h
+fail2ban_findtime: 10m
+# Higher than fail2ban's usual default (5) specifically because there's no
+# IP exemption in place yet for most setups - a few of your own genuine
+# retries (wrong key offered first, a bad Ansible run reconnecting) shouldn't
+# tip this over. bantime staying short (above) is what keeps a false
+# positive here low-stakes rather than needing this to be perfectly tuned.
+fail2ban_maxretry: 10
+
+# auditd
+cis_audit_log_max_mb: 50
+cis_audit_num_logs: 5
+cis_audit_space_left_action: email
+cis_audit_action_mail_acct: root
+
+# Set false to skip a whole section across every role (see roles/*/defaults/main.yml
+# for finer-grained per-control toggles).
+cis_section_initial_setup: true
+cis_section_services: true
+cis_section_network: true
+cis_section_logging_auditing: true
+cis_section_access_authentication: true
+cis_section_system_maintenance: true
+
+# --- Unattended security updates (see ansible/roles/unattended_upgrades) ---
+# On by default (unlike netbird/fail2ban) - patching cadence matters as much
+# as initial hardening. Set false per-host/group if a box needs manual
+# change control instead. Reboots automatically when an update actually
+# requires one, at a fixed daily time rather than immediately.
+auto_updates_enabled: true
+auto_updates_reboot: true
+auto_updates_reboot_time: "03:00"
+auto_updates_email: ""   # optional; blank = no email reporting configured
+
+# --- Wazuh agent (see ansible/roles/wazuh_agent) ---
+# Off by default and placeholder-driven - the manager isn't set up yet.
+# Once it is: set wazuh_manager_address for real here (not secret, safe to
+# commit), pass wazuh_agent_registration_password via --extra-vars/vault
+# (never commit a real one), then run:
+#   ansible-playbook -i inventory/hosts.ini site.yml --tags wazuh_agent \
+#     -e "wazuh_agent_enabled=true wazuh_agent_registration_password=<pw>"
+wazuh_agent_enabled: false
+wazuh_manager_address: "CHANGE_ME.wazuh-manager.example"
+wazuh_agent_registration_password: ""
+wazuh_agent_version: ""

@@ -1,0 +1,128 @@
+---
+# CIS Rocky Linux 9 - Section 3: Network
+# sysctl hardening + firewalld.
+
+- name: "3.2 | Network sysctl hardening"
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop:
+    - { key: "net.ipv4.ip_forward", value: "0" }
+    - { key: "net.ipv4.conf.all.send_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.send_redirects", value: "0" }
+    - { key: "net.ipv4.conf.all.accept_source_route", value: "0" }
+    - { key: "net.ipv4.conf.default.accept_source_route", value: "0" }
+    - { key: "net.ipv4.conf.all.accept_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.accept_redirects", value: "0" }
+    - { key: "net.ipv4.conf.all.secure_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.secure_redirects", value: "0" }
+    - { key: "net.ipv4.conf.all.log_martians", value: "1" }
+    - { key: "net.ipv4.conf.default.log_martians", value: "1" }
+    - { key: "net.ipv4.icmp_echo_ignore_broadcasts", value: "1" }
+    - { key: "net.ipv4.icmp_ignore_bogus_error_responses", value: "1" }
+    - { key: "net.ipv4.conf.all.rp_filter", value: "1" }
+    - { key: "net.ipv4.conf.default.rp_filter", value: "1" }
+    - { key: "net.ipv4.tcp_syncookies", value: "1" }
+    - { key: "net.ipv6.conf.all.accept_ra", value: "0" }
+    - { key: "net.ipv6.conf.default.accept_ra", value: "0" }
+    - { key: "net.ipv6.conf.all.accept_redirects", value: "0" }
+    - { key: "net.ipv6.conf.default.accept_redirects", value: "0" }
+  tags: [cis_3.2]
+
+- name: "3.4 | Ensure firewalld is installed"
+  ansible.builtin.dnf:
+    name: firewalld
+    state: present
+  when: rocky9cis_configure_firewalld | bool
+  tags: [cis_3.4]
+
+- name: "3.4 | Ensure firewalld is enabled and running"
+  ansible.builtin.service:
+    name: firewalld
+    state: started
+    enabled: true
+  when: rocky9cis_configure_firewalld | bool
+  tags: [cis_3.4]
+
+- name: "3.4 | Ensure nftables/iptables are not simultaneously active with firewalld"
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - iptables
+    - nftables
+  failed_when: false
+  when: rocky9cis_configure_firewalld | bool
+  tags: [cis_3.4]
+
+# --- 3.5 Netbird firewall integration ---
+# All tasks here require the wt0 interface to already exist - site.yml runs
+# the netbird play before this one specifically so that holds on a full
+# run. Using --tags netbird in isolation to join for the first time? Follow
+# up with a full run (or --tags netbird,cis_3.5) so these actually apply.
+
+- name: "3.5 | Trust the Netbird interface fully (VPN traffic is already mesh-authenticated)"
+  ansible.posix.firewalld:
+    zone: trusted
+    interface: "{{ cis_vpn_interface }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  when: >
+    rocky9cis_configure_firewalld | bool and netbird_enabled | bool and cis_vpn_trust_interface | bool
+    and cis_vpn_interface in ansible_facts['interfaces']
+  tags: [cis_3.5]
+
+# cis_vpn_only_tcp_ports stays empty until you actually deploy something
+# that should be VPN-only (e.g. a Wazuh dashboard) without fully trusting
+# the interface - no-op by default.
+
+- name: "3.5 | Create firewalld zone for VPN-only management ports"
+  ansible.posix.firewalld:
+    zone: netbird-mgmt
+    state: present
+    permanent: true
+  when: >
+    rocky9cis_configure_firewalld | bool and cis_vpn_only_tcp_ports | length > 0
+    and cis_vpn_interface in ansible_facts['interfaces']
+  notify: reload firewalld
+  tags: [cis_3.5]
+
+- name: "3.5 | Bind the Netbird interface to the netbird-mgmt zone"
+  ansible.posix.firewalld:
+    zone: netbird-mgmt
+    interface: "{{ cis_vpn_interface }}"
+    permanent: true
+    state: enabled
+  when: >
+    rocky9cis_configure_firewalld | bool and cis_vpn_only_tcp_ports | length > 0
+    and cis_vpn_interface in ansible_facts['interfaces']
+  notify: reload firewalld
+  tags: [cis_3.5]
+
+- name: "3.5 | Allow management ports only within the netbird-mgmt zone"
+  ansible.posix.firewalld:
+    zone: netbird-mgmt
+    port: "{{ item }}/tcp"
+    permanent: true
+    state: enabled
+  loop: "{{ cis_vpn_only_tcp_ports }}"
+  when: >
+    rocky9cis_configure_firewalld | bool and cis_vpn_only_tcp_ports | length > 0
+    and cis_vpn_interface in ansible_facts['interfaces']
+  notify: reload firewalld
+  tags: [cis_3.5]
+
+- name: "3.5 | Allow Netbird UDP port publicly (optional, usually unnecessary)"
+  ansible.posix.firewalld:
+    port: "{{ cis_netbird_udp_port }}/udp"
+    permanent: true
+    state: enabled
+    zone: public
+  when: rocky9cis_configure_firewalld | bool and cis_netbird_expose_udp_port | bool
+  notify: reload firewalld
+  tags: [cis_3.5]

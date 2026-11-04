@@ -1,0 +1,17 @@
+---
+# Per-control on/off switches. Section-wide switches (cis_section_*) live in
+# inventory/group_vars/all.yml and gate these at a coarser level.
+
+centos10cis_section1_filesystem_mac: true
+centos10cis_section2_services: true
+centos10cis_section3_network: true
+centos10cis_section4_logging_auditing: true
+centos10cis_section5_access_authentication: true
+centos10cis_section6_system_maintenance: true
+
+# Individual controls some environments need to opt out of (e.g. bootloader
+# password breaks unattended PXE re-provisioning, so default it off).
+centos10cis_set_bootloader_password: false
+centos10cis_enforce_selinux: true
+centos10cis_configure_aide: true
+centos10cis_configure_firewalld: true

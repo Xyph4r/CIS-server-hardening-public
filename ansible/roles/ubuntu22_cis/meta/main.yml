@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: ubuntu22_cis
+  description: CIS Ubuntu Linux 22.04 LTS Benchmark (Level 1 Server) hardening
+  author: "{{ lookup('env', 'USER') }}"
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: ["22.04"]
+  galaxy_tags:
+    - security
+    - hardening
+    - cis
+dependencies: []

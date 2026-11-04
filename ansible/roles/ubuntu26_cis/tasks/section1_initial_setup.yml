@@ -1,0 +1,227 @@
+---
+# CIS Ubuntu 26.04 - Section 1: Initial Setup
+# Filesystem kernel modules, apt integrity, MAC (AppArmor), bootloader,
+# process hardening, warning banners.
+#
+# NOTE: cloned from the ubuntu22_cis role at 26.04's release. Package/service
+# names have historically stayed stable across Ubuntu LTS releases in this
+# family, but this hasn't been verified against a real 26.04 box or an
+# official CIS Ubuntu 26.04 benchmark yet (may not be published at time of
+# writing) - treat as provisional until checked. See TODO.md.
+
+# --- 1.1 Filesystem: disable unused/legacy filesystem kernel modules ---
+- name: "1.1 | Disable unused filesystem kernel modules"
+  ansible.builtin.copy:
+    dest: "/etc/modprobe.d/cis-disabled-filesystems.conf"
+    content: |
+      {% for fs in cis_disable_filesystems %}
+      install {{ fs }} /bin/true
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [cis_1.1]
+
+- name: "1.1 | Ensure disabled filesystems are not currently loaded"
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ cis_disable_filesystems }}"
+  failed_when: false
+  tags: [cis_1.1]
+
+# --- 1.1.2 Filesystem partitions: /tmp and /dev/shm hardening ---
+# Converts /tmp to a hardened tmpfs mount via systemd's built-in tmp.mount
+# unit rather than resizing/creating a real disk partition on a live disk,
+# which this repo deliberately does not automate (too risky to do blind on
+# a box that might already have data/layout assumptions - see TODO.md).
+# /dev/shm is already tmpfs by default on every supported OS here - this
+# just adds the missing mount options.
+#
+# /tmp: only takes effect after a reboot. A live remount would immediately
+# hide whatever's currently in /tmp from any process with an open file
+# handle there - waiting for a planned reboot is safer than doing that
+# mid-session. /dev/shm: remounted immediately - a live remount here is
+# well-established safe practice and nothing meaningful is expected to
+# persist there.
+
+- name: "1.1.2.1 | Ensure tmp.mount systemd override directory exists"
+  ansible.builtin.file:
+    path: /etc/systemd/system/tmp.mount.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: cis_harden_tmp_partition | bool
+  tags: [cis_1.1.2]
+
+- name: "1.1.2.1 | Harden /tmp via systemd tmp.mount override (nodev,nosuid,noexec)"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/tmp.mount.d/cis-hardening.conf
+    content: |
+      [Mount]
+      Options=mode=1777,strictatime,nodev,nosuid,noexec{{ (',size=' + cis_tmp_tmpfs_size) if cis_tmp_tmpfs_size | length > 0 else '' }}
+    owner: root
+    group: root
+    mode: "0644"
+  when: cis_harden_tmp_partition | bool
+  tags: [cis_1.1.2]
+
+- name: "1.1.2.1 | Enable tmp.mount (active after next reboot)"
+  ansible.builtin.systemd:
+    name: tmp.mount
+    enabled: true
+    daemon_reload: true
+  when: cis_harden_tmp_partition | bool
+  tags: [cis_1.1.2]
+
+- name: "1.1.2.2 | Harden /dev/shm (nodev,nosuid,noexec), applied immediately"
+  ansible.posix.mount:
+    path: /dev/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: "defaults,nodev,nosuid,noexec"
+    state: mounted
+  when: cis_harden_dev_shm | bool
+  tags: [cis_1.1.2]
+
+# --- 1.2 apt integrity ---
+- name: "1.2.1 | Ensure APT does not allow unauthenticated packages"
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99cis-no-unauthenticated
+    content: |
+      APT::Get::AllowUnauthenticated "false";
+      Acquire::AllowInsecureRepositories "false";
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [cis_1.2.1]
+
+- name: "1.2.2 | Ensure gpgv is installed (repo signature verification)"
+  ansible.builtin.apt:
+    name: gpgv
+    state: present
+  tags: [cis_1.2.2]
+
+# --- 1.3 Mandatory Access Control: AppArmor ---
+- name: "1.3.1 | Ensure AppArmor is installed"
+  ansible.builtin.apt:
+    name:
+      - apparmor
+      - apparmor-utils
+    state: present
+  when: ubuntu26cis_enforce_apparmor | bool
+  tags: [cis_1.3.1]
+
+- name: "1.3.2 | Ensure AppArmor is not disabled in bootloader config"
+  ansible.builtin.replace:
+    path: /etc/default/grub
+    regexp: '\bapparmor=0\b'
+    replace: ''
+  when: ubuntu26cis_enforce_apparmor | bool
+  notify: update grub
+  tags: [cis_1.3.2]
+
+- name: "1.3.3 | Ensure AppArmor is enabled and running"
+  ansible.builtin.service:
+    name: apparmor
+    state: started
+    enabled: true
+  when: ubuntu26cis_enforce_apparmor | bool
+  tags: [cis_1.3.3]
+
+- name: "1.3.4 | Set all AppArmor profiles to enforce mode"
+  ansible.builtin.command: aa-enforce /etc/apparmor.d/*
+  when: ubuntu26cis_enforce_apparmor | bool
+  changed_when: true
+  failed_when: false
+  tags: [cis_1.3.4]
+
+# --- 1.5 Process hardening ---
+- name: "1.5.1 | Ensure ASLR is enabled"
+  ansible.posix.sysctl:
+    name: kernel.randomize_va_space
+    value: "2"
+    sysctl_set: true
+    state: present
+    reload: true
+  tags: [cis_1.5.1]
+
+- name: "1.5.2 | Ensure ptrace_scope is restricted"
+  ansible.posix.sysctl:
+    name: kernel.yama.ptrace_scope
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+  tags: [cis_1.5.2]
+
+- name: "1.5.3 | Ensure core dumps are restricted (limits.conf)"
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/cis-core-dumps.conf
+    content: "* hard core 0\n"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [cis_1.5.3]
+
+- name: "1.5.3 | Ensure core dumps are restricted (sysctl)"
+  ansible.posix.sysctl:
+    name: fs.suid_dumpable
+    value: "0"
+    sysctl_set: true
+    state: present
+    reload: true
+  tags: [cis_1.5.3]
+
+# --- 1.7 Warning banners ---
+- name: "1.7.1 | Set warning banner content (/etc/issue, /etc/issue.net, /etc/motd)"
+  ansible.builtin.copy:
+    dest: "{{ item }}"
+    content: "{{ cis_banner_text }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - /etc/issue
+    - /etc/issue.net
+    - /etc/motd
+  tags: [cis_1.7.1]
+
+- name: "1.7.2 | Disable Ubuntu's dynamic MOTD news/ads"
+  ansible.builtin.file:
+    path: /etc/default/motd-news
+    state: absent
+  failed_when: false
+  tags: [cis_1.7.2]
+
+# --- AIDE file integrity monitoring ---
+- name: "1.4 | Install AIDE"
+  ansible.builtin.apt:
+    name: aide
+    state: present
+  when: ubuntu26cis_configure_aide | bool
+  tags: [cis_1.4]
+
+- name: "1.4 | Check whether AIDE database already exists"
+  ansible.builtin.stat:
+    path: /var/lib/aide/aide.db
+  register: ubuntu26cis_aide_db
+  when: ubuntu26cis_configure_aide | bool
+  tags: [cis_1.4]
+
+- name: "1.4 | Initialize AIDE database (first run only, async)"
+  ansible.builtin.command: aideinit -y -f
+  when: ubuntu26cis_configure_aide and not ubuntu26cis_aide_db.stat.exists
+  async: 3600
+  poll: 0
+  changed_when: true
+  tags: [cis_1.4]
+
+- name: "1.4 | Schedule daily AIDE integrity check"
+  ansible.builtin.cron:
+    name: "CIS - AIDE integrity check"
+    special_time: daily
+    job: "/usr/bin/aide.wrapper --check"
+  when: ubuntu26cis_configure_aide | bool
+  tags: [cis_1.4]
